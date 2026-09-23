@@ -1,0 +1,54 @@
+{
+  "pdf_path": "",
+  "poppler_path": "",
+  "target_window_title": "สแกนส่งสินค้า / ส่่งออกข้อมูล [SOP-P]",
+  "default_weight": "0.49",
+  "start_delay": 3,
+  "batch_size": 0,
+  "sequence": [
+    {
+      "type": "TYPE_BARCODE"
+    },
+    {
+      "type": "KEY",
+      "value": "enter"
+    }
+  ],
+  "sequence_profile": "",
+  "paste_method": false,
+  "restore_clipboard": true,
+  "only_qrcode": true,
+  "dpi": 150,
+  "ocr_lang": "tha+eng",
+  "tesseract_path": "",
+  "ocr_region": {
+    "left": 260,
+    "top": 538,
+    "width": 845,
+    "height": 275
+  },
+  "verify_region": {
+    "left": 1359,
+    "top": 271,
+    "width": 326,
+    "height": 461
+  },
+  "verify_scroll_amount": 400,
+  "verify_invert": true,
+  "verify_passes": 2,
+  "ocr_rules": [],
+  "cancel_keywords": [
+    "Cancel",
+    "ยกเลิก"
+  ],
+  "duplicate_keywords": [
+    "กรุณาตรวจสอบน้ำหนัก",
+    "ซ้ำ",
+    "Duplicate"
+  ],
+  "retry_limit": 1,
+  "shortcuts": {
+    "start": "F6",
+    "stop": "F7"
+  }
+}

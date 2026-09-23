@@ -1,0 +1,10 @@
+.venv/
+.venv-1/
+__pycache__/
+build/
+*.pyc
+extracted_codes_cache.json
+auto_receive_config.local.json
+
+# Generated executable is distributed through GitHub Releases.
+dist/

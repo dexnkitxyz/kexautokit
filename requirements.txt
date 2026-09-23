@@ -1,0 +1,8 @@
+pdf2image
+pyzbar
+pillow
+pyautogui
+pygetwindow
+pyperclip
+pytesseract
+tkinterdnd2
