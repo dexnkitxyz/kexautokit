@@ -6,3 +6,4 @@ pygetwindow
 pyperclip
 pytesseract
 tkinterdnd2
+pyinstaller

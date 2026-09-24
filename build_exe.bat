@@ -3,12 +3,25 @@ setlocal
 chcp 65001 >nul
 
 echo ============================================
-echo Building auto_receive.exe
+echo Building kexauto.exe
 echo ============================================
 
-if not exist ".venv\Scripts\pyinstaller.exe" (
-    echo ERROR: PyInstaller was not found in .venv
-    echo Run setup_and_run.bat first or install PyInstaller in .venv.
+set "PYINSTALLER=.venv-1\Scripts\pyinstaller.exe"
+if not exist "%PYINSTALLER%" (
+    set "PYINSTALLER=.venv\Scripts\pyinstaller.exe"
+)
+
+if not exist "%PYINSTALLER%" (
+    where pyinstaller >nul 2>&1
+    if not errorlevel 1 set "PYINSTALLER=pyinstaller"
+)
+
+if "%PYINSTALLER%"=="pyinstaller" (
+    echo Using PyInstaller from PATH
+) else if not exist "%PYINSTALLER%" (
+    echo ERROR: PyInstaller was not found.
+    echo Run setup_and_run.bat first or install it with:
+    echo   python -m pip install -r requirements.txt
     exit /b 1
 )
 
@@ -17,7 +30,7 @@ if not exist "auto_receive.py" (
     exit /b 1
 )
 
-".venv\Scripts\pyinstaller.exe" --noconfirm --clean auto_receive.spec
+"%PYINSTALLER%" --noconfirm --clean --distpath dist_release --workpath build_release auto_receive.spec
 if errorlevel 1 (
     echo.
     echo Build failed.
@@ -26,7 +39,7 @@ if errorlevel 1 (
 
 echo.
 echo Build complete:
-echo   dist\auto_receive\auto_receive.exe
+echo   dist_release\kexauto.exe
 echo.
-echo Copy the entire dist\auto_receive folder when distributing the app.
+echo Copy dist_release\kexauto.exe when distributing the app.
 endlocal

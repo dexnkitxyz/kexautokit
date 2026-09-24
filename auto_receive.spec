@@ -1,7 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 from pathlib import Path
-from pyzbar import pyzbar
 from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs
 
 project_dir = Path(SPEC).parent
@@ -11,7 +10,7 @@ a = Analysis(
     pathex=[str(project_dir)],
     binaries=collect_dynamic_libs('pyzbar'),
     datas=[
-        (str(project_dir / 'auto_receive_config.json'), '.'),
+        (str(project_dir / 'kexauto.ico'), '.'),
         (str(project_dir / 'poppler'), 'poppler'),
         (str(project_dir / 'tesseract'), 'tesseract'),
         *collect_data_files('tkinterdnd2'),
@@ -32,7 +31,8 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='auto_receive',
+    name='kexauto',
+    icon=str(project_dir / 'kexauto.ico'),
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
