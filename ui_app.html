@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>KexAuto</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --page: #101826;
+      --surface: #182334;
+      --ink: #e4ebf5;
+      --muted: #94a3b8;
+      --line: #2b394c;
+      --blue: #82aaff;
+      --blue-pale: #233653;
+      --green: #53d3a0;
+      --green-pale: #1c3b36;
+      --red: #ff8390;
+      --red-pale: #422b36;
+      --shadow: 0 10px 30px rgba(0, 0, 0, .16);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      width: 1200px;
+      height: 800px;
+      overflow: hidden;
+      background: var(--page);
+      color: var(--ink);
+      font: 14px "Leelawadee UI", "Segoe UI", Tahoma, sans-serif;
+    }
+    body[data-font="iphone"] {
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
+        "SF Thonburi", Thonburi, "Leelawadee UI", "Segoe UI", Tahoma, sans-serif;
+    }
+    button, input, select { font: inherit; }
+    button { cursor: pointer; }
+    .window-shell {
+      width: 1200px; height: 800px; margin: 0;
+      overflow: hidden; background: var(--page);
+      border: 0; border-radius: 0;
+      box-shadow: none;
+    }
+    .window-titlebar {
+      height: 30px; display: flex; align-items: center; justify-content: space-between;
+      padding-left: 11px; background: #131e2d; border-bottom: 1px solid var(--line);
+      color: var(--ink); font-size: 11px; user-select: none; cursor: move;
+    }
+    .window-title { display: flex; align-items: center; gap: 7px; }
+    .window-title-mark {
+      width: 16px; height: 16px; display: grid; place-items: center;
+      border-radius: 4px; background: var(--blue); color: white;
+      font-size: 9px; font-weight: 800;
+    }
+    .window-controls { display: flex; height: 100%; }
+    .window-control { width: 42px; display: grid; place-items: center; color: var(--ink); font-size: 12px; border: 0; background: transparent; }
+    .window-control.close { color: #fff; background: #d94c55; }
+    .window-control:hover { background: #2b394c; }
+    .window-control.close:hover { background: #c83340; }
+    .app { height: 768px; display: grid; grid-template-columns: 200px 1fr; overflow: hidden; }
+    .compact-nav { display: none; }
+    .sidebar {
+      background: #131e2d;
+      border-right: 1px solid var(--line);
+      padding: 18px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    .brand { display: flex; align-items: center; gap: 11px; padding: 0 10px; }
+    .brand-mark {
+      width: 38px; height: 38px; display: grid; place-items: center;
+      color: #fff; background: var(--blue); border-radius: 12px;
+      font-size: 18px; font-weight: 800;
+    }
+    .brand-name { font-size: 17px; font-weight: 750; letter-spacing: -.3px; }
+    .brand-sub { color: var(--muted); font-size: 11px; margin-top: 2px; }
+    .nav-label { padding: 0 11px; color: #98a3b4; font-size: 10px; font-weight: 700; letter-spacing: 1px; }
+    .nav { display: grid; gap: 5px; }
+    .nav-item {
+      display: flex; align-items: center; gap: 12px; padding: 10px 12px;
+      border-radius: 9px; color: #65738a; font-weight: 600;
+    }
+    .nav-item.active { background: var(--blue-pale); color: var(--blue); }
+    .nav-icon { width: 19px; text-align: center; font-size: 16px; }
+    .side-bottom { margin-top: auto; }
+    .shortcut-hint {
+      background: #f7f9fc; border: 1px solid var(--line); border-radius: 10px;
+      padding: 12px; color: var(--muted); font-size: 11px; line-height: 1.9;
+    }
+    kbd {
+      background: #fff; border: 1px solid #dfe5ed; border-radius: 4px;
+      padding: 1px 5px; color: #536177; font: 10px "Segoe UI", sans-serif;
+    }
+    main { min-width: 0; padding: 9px 18px 8px; overflow: hidden; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 7px; }
+    h1 { margin: 0; font-size: 23px; letter-spacing: -.5px; }
+    .subtitle { color: var(--muted); margin-top: 4px; font-size: 12px; }
+    .top-actions { display: flex; align-items: center; gap: 8px; }
+    .icon-btn, .btn {
+      display: inline-flex; justify-content: center; align-items: center; gap: 7px;
+      border: 1px solid var(--line); border-radius: 8px; background: #fff;
+      color: #44536b; padding: 8px 12px; font-weight: 650;
+    }
+    .icon-btn { width: 36px; height: 36px; padding: 0; }
+    .btn.primary { background: var(--blue); border-color: var(--blue); color: white; }
+    .btn.danger { background: var(--red-pale); color: var(--red); border-color: #f6d9dc; }
+    .btn.continue { background: var(--green-pale); color: var(--green); border-color: #d4efdf; }
+    .btn.small { padding: 6px 9px; font-size: 12px; }
+    .card {
+      border: 1px solid var(--line); border-radius: 12px; background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+    .file-card { display: flex; align-items: center; gap: 11px; padding: 9px 13px; }
+    .file-icon { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 9px; background: #fff1e9; font-size: 18px; }
+    .file-info { min-width: 0; flex: 1; }
+    .file-name { font-weight: 700; }
+    .file-meta { margin-top: 4px; color: var(--muted); font-size: 11px; }
+    .file-count { color: var(--blue); font-size: 12px; font-weight: 700; white-space: nowrap; }
+    .file-drop {
+      min-width: 240px; display: flex; align-items: center; gap: 9px;
+      padding: 7px 10px; border: 1px dashed #b8c9e5; border-radius: 9px;
+      background: #f8faff;
+    }
+    .file-drop.dragging { border-color: var(--blue); background: var(--blue-pale); }
+    .file-drop-icon { color: var(--blue); font-size: 17px; }
+    .file-drop-copy { min-width: 0; flex: 1; }
+    .file-drop-title { color: #42536d; font-size: 11px; font-weight: 700; }
+    .file-drop-note { margin-top: 2px; color: var(--muted); font-size: 10px; }
+    .run-strip {
+      display: flex; align-items: center; gap: 8px; margin: 8px 0 10px;
+      padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px;
+      background: var(--surface); box-shadow: var(--shadow);
+    }
+    .run-state { display: flex; align-items: center; gap: 7px; margin-right: auto; }
+    .run-state-title { font-size: 12px; font-weight: 750; }
+    .run-state-note { margin-top: 2px; color: var(--muted); font-size: 10px; }
+    .section-head { display: flex; align-items: center; justify-content: space-between; margin: 7px 1px 5px; }
+    h2 { margin: 0; font-size: 15px; }
+    .section-note { color: var(--muted); font-size: 11px; }
+    .options { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px 10px; padding: 7px 10px; }
+    .option { min-width: 0; }
+    .option label { display: block; margin-bottom: 6px; color: #66758b; font-size: 11px; font-weight: 600; }
+    .input {
+      display: flex; align-items: center; height: 30px; padding: 0 9px;
+      border: 1px solid var(--line); border-radius: 7px; color: #394960;
+      background: #fff; font-size: 12px;
+    }
+    .option .input { width: 100%; }
+    .checkline { display: flex; gap: 8px; align-items: center; padding: 3px 2px 0; color: #56657b; font-size: 11px; }
+    .check { width: 14px; height: 14px; accent-color: var(--blue); }
+    .sequence-card { overflow: hidden; }
+    .sequence-toolbar {
+      display: flex; align-items: center; gap: 5px; padding: 5px 9px;
+      border-bottom: 1px solid var(--line); background: #fbfcfe;
+    }
+    .sequence-toolbar .spacer { flex: 1; }
+    .select { width: 155px; height: 32px; border: 1px solid var(--line); border-radius: 7px; padding: 0 8px; color: #44536b; background: white; }
+    .step-value { width: 90px; height: 32px; }
+    table { width: 100%; border-collapse: collapse; }
+    th { padding: 5px 9px; background: #f7f9fc; color: #77849a; text-align: left; font-size: 10px; font-weight: 700; }
+    td { padding: 4px 9px; border-top: 1px solid #eff2f6; font-size: 11px; }
+    tr.selected td { background: #f2f6ff; }
+    .step-no { color: #95a1b2; width: 48px; }
+    .step-kind { font-weight: 650; }
+    .step-detail { color: #718096; }
+    .step-grip { color: #aeb8c5; font-size: 15px; padding-right: 6px; }
+    .lower-grid { display: grid; grid-template-columns: 1.25fr 1fr; gap: 8px; margin-top: 6px; }
+    .log-card { overflow: hidden; }
+    .log-head { display: flex; align-items: center; justify-content: space-between; padding: 7px 10px; border-bottom: 1px solid var(--line); }
+    .log-title { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; }
+    .live-dot { width: 7px; height: 7px; background: #24a875; border-radius: 50%; }
+    .log-body {
+      height: 72px; overflow: hidden; padding: 5px 9px; background: #fbfcfe;
+      color: #56657b; font: 11px/1.9 Consolas, "Cascadia Code", monospace;
+    }
+    .log-line { white-space: nowrap; }
+    .log-time { color: #a1aaba; margin-right: 8px; }
+    .log-ok { color: var(--green); }
+    .log-error { color: var(--red); }
+    .click-copy { color: #2663d8; text-decoration: underline; text-decoration-style: dotted; }
+    .statusbar { display: flex; align-items: center; gap: 14px; padding: 7px 10px; border-top: 1px solid var(--line); color: #65738a; font-size: 10px; }
+    .statusbar strong { color: var(--ink); }
+    .statusbar .right { margin-left: auto; }
+    .pill { border-radius: 20px; padding: 4px 8px; background: var(--green-pale); color: var(--green); font-size: 10px; font-weight: 700; }
+    body[data-design="dark"] .app { grid-template-columns: 1fr; }
+    body[data-design="dark"] .sidebar { display: none; }
+    body[data-design="dark"] main { width: min(1380px, 100%); margin: 0 auto; padding: 18px 28px 26px; }
+    body[data-design="dark"] .compact-nav {
+      display: flex; align-items: center; gap: 20px; min-height: 28px; padding: 0 20px;
+      background: #131e2d; border-bottom: 1px solid var(--line); color: #aab8ca; font-size: 11px; font-weight: 650;
+    }
+    body[data-design="dark"] .compact-nav .compact-brand { color: var(--blue); font-size: 14px; font-weight: 800; margin-right: 8px; }
+    body[data-design="dark"] .compact-nav .compact-current { color: var(--blue); }
+    body[data-design="dark"] .compact-nav button {
+      border: 0; border-radius: 7px; padding: 5px 7px;
+      background: transparent; color: inherit; white-space: nowrap;
+    }
+    body[data-design="dark"] .compact-nav button:hover { background: var(--blue-pale); color: var(--blue); }
+    body[data-design="dark"] .compact-nav button.compact-current { color: var(--blue); }
+    body[data-design="dark"] .topbar { border-bottom: 0; padding-bottom: 0; }
+    body[data-design="dark"] .topbar .subtitle { display: none; }
+    body[data-design="dark"] .options { grid-template-columns: repeat(4, 1fr); }
+    body[data-design="dark"] .lower-grid { grid-template-columns: 1.25fr 1fr; }
+    body[data-design="dark"] .file-card { border-left: 4px solid var(--blue); }
+    body[data-design="dark"] .log-body { height: 64px; }
+    body[data-design="dark"] {
+      background: var(--page);
+    }
+    body[data-design="dark"] .sidebar,
+    body[data-design="dark"] .compact-nav { background: #131e2d; }
+    body[data-design="dark"] .nav-item { color: #aab8ca; }
+    body[data-design="dark"] .shortcut-hint,
+    body[data-design="dark"] .sequence-toolbar,
+    body[data-design="dark"] .log-body { background: #141f2e; }
+    body[data-design="dark"] .btn,
+    body[data-design="dark"] .icon-btn,
+    body[data-design="dark"] .select,
+    body[data-design="dark"] .input,
+    body[data-design="dark"] kbd {
+      background: #1d2b40; border-color: #344761; color: var(--ink);
+    }
+    body[data-design="dark"] .btn:hover,
+    body[data-design="dark"] .icon-btn:hover { background: #293a53; }
+    body[data-design="dark"] .btn.primary { background: #3976ed; border-color: #3976ed; color: #fff; }
+    body[data-design="dark"] .btn.primary:hover { background: #2864dc; }
+    body[data-design="dark"] .btn.danger { background: var(--red-pale); color: var(--red); border-color: #593743; }
+    body[data-design="dark"] .btn.continue { background: var(--green-pale); color: var(--green); border-color: #2c5148; }
+    body[data-design="dark"] th { background: #1c293b; color: #9aa9bd; }
+    body[data-design="dark"] td { border-color: #263549; }
+    body[data-design="dark"] tr.selected td { background: #203450; }
+    body[data-design="dark"] .statusbar { color: #9aa9bd; }
+    body[data-design="dark"] .statusbar strong { color: var(--ink); }
+    body[data-design="dark"] .file-icon { background: #3d302d; }
+    body[data-design="dark"] .file-drop { background: #17263b; border-color: #36547d; }
+    body[data-design="dark"] .file-drop-title { color: var(--ink); }
+    body[data-design="dark"] .file-drop-note { color: var(--muted); }
+    body[data-design="dark"] .compact-nav button { color: #aab8ca; }
+    body[data-design="dark"] .compact-nav button:hover,
+    body[data-design="dark"] .compact-nav button.compact-current { color: var(--blue); }
+    .btn:disabled { cursor: default; opacity: .45; }
+    @media (max-width: 1100px) {
+      .app { grid-template-columns: 180px 1fr; }
+      main { padding: 18px; }
+      .options { grid-template-columns: repeat(2, 1fr); }
+      .lower-grid { grid-template-columns: 1fr; }
+      .sequence-toolbar { flex-wrap: wrap; }
+    }
+    @media (max-width: 850px) {
+      .app { grid-template-columns: 150px 1fr; }
+      main { padding: 14px; }
+      .sidebar { padding: 18px 10px; }
+      .top-actions .btn:not(.primary) { padding: 7px 8px; }
+      .file-card { flex-wrap: wrap; }
+      body[data-design="dark"] main { padding: 12px 18px; }
+      body[data-design="dark"] .compact-nav { padding: 0 14px; gap: 12px; }
+      body[data-design="dark"] .lower-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body data-design="dark">
+  <div class="window-shell">
+  <div class="window-titlebar">
+    <div class="window-title"><span class="window-title-mark">K</span><span>KexAuto — โปรแกรมรับสินค้าจากบาร์โค้ด PDF</span></div>
+    <div class="window-controls"><button class="window-control" id="minimize-window" title="ย่อหน้าต่าง">—</button><button class="window-control" id="maximize-window" title="เต็มหน้าจอ">□</button><button class="window-control close" id="close-window" title="ปิด">×</button></div>
+  </div>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">K</div>
+        <div><div class="brand-name">KexAuto</div><div class="brand-sub">PDF automation</div></div>
+      </div>
+      <div>
+        <div class="nav-label">WORKSPACE</div>
+        <nav class="nav" style="margin-top:9px">
+          <div class="nav-item active"><span class="nav-icon">▣</span>หน้าหลัก</div>
+          <div class="nav-item"><span class="nav-icon">⌘</span>ลำดับสเต็ป</div>
+          <div class="nav-item"><span class="nav-icon">◉</span>ตรวจสอบรายการ</div>
+          <div class="nav-item"><span class="nav-icon">▤</span>รายการบาร์โค้ด</div>
+        </nav>
+      </div>
+      <div>
+        <div class="nav-label">ตั้งค่า</div>
+        <nav class="nav" style="margin-top:9px">
+          <div class="nav-item"><span class="nav-icon">⚙</span>ตัวเลือกการทำงาน</div>
+          <div class="nav-item"><span class="nav-icon">⌨</span>ปุ่มลัด</div>
+        </nav>
+      </div>
+      <div class="side-bottom shortcut-hint">
+        <strong style="color:#43516a">ปุ่มลัด</strong><br>
+        เริ่ม <kbd>F6</kbd> &nbsp; หยุด <kbd>F7</kbd><br>
+        ดำเนินการต่อ <kbd>F8</kbd>
+      </div>
+    </aside>
+
+    <main>
+      <nav class="compact-nav">
+        <span class="compact-brand">KexAuto</span>
+        <button class="compact-current" data-nav="home">หน้าหลัก</button>
+        <button data-nav="verify">ตรวจสอบรายการ</button>
+        <button data-nav="settings">ตั้งค่า</button>
+        <button data-nav="paths">ไฟล์ / พาธ</button>
+        <button data-nav="codes">บาร์โค้ด</button>
+        <button data-nav="shortcuts">ปุ่มลัด</button>
+      </nav>
+      <header class="topbar">
+        <div><h1>หน้าหลัก</h1><div class="subtitle">จัดการงานอ่านบาร์โค้ดและควบคุมการทำงาน</div></div>
+        <div class="top-actions">
+          <span id="stats-summary" class="section-note"></span>
+          <button class="btn" id="save-config">บันทึกการตั้งค่า</button>
+          <button class="btn" id="check-updates">อัปเดต</button>
+        </div>
+      </header>
+
+      <section class="card file-card">
+        <div class="file-drop" id="file-drop">
+          <span class="file-drop-icon">⇧</span>
+          <div class="file-drop-copy">
+            <div class="file-drop-title" id="drop-title">ลากไฟล์ PDF มาวางที่นี่</div>
+            <div class="file-drop-note" id="drop-note">หรือเลือกจากในเครื่อง</div>
+          </div>
+          <button class="btn small" id="choose-pdf">เลือก PDF</button>
+        </div>
+        <div class="file-icon">📄</div>
+        <div class="file-info">
+          <div class="file-name" id="selected-file-name">ยังไม่ได้เลือกไฟล์</div>
+          <div class="file-meta" id="file-meta">เลือก PDF เพื่อเริ่มทำงาน</div>
+        </div>
+        <div class="file-count" id="file-count">พบ 0 รายการ</div>
+        <button class="btn small" id="rescan-pdf">สแกนใหม่</button>
+      </section>
+
+      <section class="run-strip">
+        <div class="run-state">
+          <span class="pill" id="run-status">พร้อมทำงาน</span>
+          <div>
+            <div class="run-state-title">การทำงานและบันทึก</div>
+            <div class="run-state-note" id="shortcut-status"></div>
+          </div>
+        </div>
+        <button class="btn primary" id="start-run">▶ เริ่มทำงาน</button>
+        <button class="btn danger" id="stop-run">■ หยุด</button>
+        <button class="btn continue" id="resume-run">▶ ดำเนินการต่อ</button>
+      </section>
+
+      <div class="section-head">
+        <h2>ตั้งค่ารอบนี้</h2><span class="section-note">แก้ไขได้ก่อนเริ่มทำงาน</span>
+      </div>
+      <section class="card options">
+        <div class="option"><label for="weight-value">น้ำหนักเริ่มต้น</label><input class="input" id="weight-value" value="0.49"></div>
+        <div class="option"><label for="start-delay">นับถอยหลังก่อนเริ่ม (วินาที)</label><input class="input" id="start-delay" type="number" min="0" value="5"></div>
+        <div class="option"><label for="start-index">เริ่มจากรายการที่</label><input class="input" id="start-index" type="number" min="1" value="1"></div>
+        <div class="option"><label for="batch-size">หยุดพักทุก ๆ (รอบ)</label><input class="input" id="batch-size" type="number" min="0" value="70"></div>
+        <div class="checkline"><input class="check" id="only-qrcode" type="checkbox" checked> อ่านเฉพาะ QR Code</div>
+        <div class="checkline"><input class="check" id="reverse-order" type="checkbox"> เรียงจากรายการสุดท้าย</div>
+        <div class="checkline"><input class="check" id="dry-run" type="checkbox"> ทดสอบ (ไม่พิมพ์จริง)</div>
+        <div class="checkline"><input class="check" id="paste-method" type="checkbox" checked> วางจากคลิปบอร์ด</div>
+      </section>
+
+      <div class="section-head">
+        <h2>ลำดับการทำงาน</h2><span class="section-note">ดับเบิลคลิกแถวเพื่อแก้ไข · ลากเพื่อเรียงลำดับ</span>
+      </div>
+      <section class="card sequence-card">
+        <div class="sequence-toolbar">
+          <select class="select" id="sequence-profile"></select>
+          <button class="btn small" id="save-profile">บันทึกเป็นโปรไฟล์</button>
+          <button class="btn small" id="delete-profile">ลบโปรไฟล์</button>
+          <span class="spacer"></span>
+          <select class="select" id="step-type" style="width:130px"></select>
+          <input class="input step-value" id="step-value" value="enter" aria-label="ค่าของสเต็ป">
+          <button class="btn small primary" id="add-step">＋ เพิ่ม</button>
+          <button class="btn small" id="step-up">↑</button>
+          <button class="btn small" id="step-down">↓</button>
+          <button class="btn small danger" id="delete-step">ลบ</button>
+        </div>
+        <table>
+          <thead><tr><th style="width:55px">ลำดับ</th><th>การกระทำ</th><th>ค่า / รายละเอียด</th><th style="width:32px"></th></tr></thead>
+          <tbody id="sequence-steps"></tbody>
+        </table>
+      </section>
+
+      <section class="lower-grid">
+        <div class="card log-card">
+          <div class="log-head"><div class="log-title"><span class="live-dot"></span>Log การทำงาน</div><button class="btn small" id="clear-main-log">ล้าง</button></div>
+          <div class="log-body" id="main-log"></div>
+          <div class="statusbar"><span>เสร็จแล้ว <strong id="completed-count">0 / 0</strong></span><span class="right" id="main-status">พร้อมทำงาน</span></div>
+        </div>
+        <div class="card log-card">
+          <div class="log-head"><div class="log-title"><span style="color:var(--red)">●</span>Log ผิดเงื่อนไข</div><button class="btn small" id="clear-error-log">ล้าง</button></div>
+          <div class="log-body" id="error-log"></div>
+          <div class="statusbar"><span>พบรายการ <strong id="error-count" style="color:var(--red)">0</strong></span><span class="right">คลิกตัวเลขเพื่อคัดลอก</span></div>
+        </div>
+      </section>
+    </main>
+  </div>
+  </div>
+  <script>
+    document.body.dataset.font = "iphone";
+    document.body.dataset.design = "dark";
+
+    const byId = (id) => document.getElementById(id);
+    const apiReady = new Promise((resolve) => {
+      if (window.pywebview && window.pywebview.api) {
+        resolve(window.pywebview.api);
+      } else {
+        window.addEventListener("pywebviewready", () => resolve(window.pywebview.api), { once: true });
+      }
+    });
+    const settings = () => ({
+      weight: byId("weight-value").value,
+      startDelay: byId("start-delay").value,
+      startIndex: byId("start-index").value,
+      batchSize: byId("batch-size").value,
+      onlyQr: byId("only-qrcode").checked,
+      reverseOrder: byId("reverse-order").checked,
+      dryRun: byId("dry-run").checked,
+      pasteMethod: byId("paste-method").checked,
+    });
+    const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (char) => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+    })[char]);
+    let lastMainLog = "";
+    let lastErrorLog = "";
+    let selectedStep = -1;
+    let initialized = false;
+    let refreshing = false;
+
+    async function invoke(method, ...args) {
+      const api = await apiReady;
+      try {
+        return await api[method](...args);
+      } catch (error) {
+        window.alert(error.message || String(error));
+        throw error;
+      }
+    }
+
+    function renderLog(target, lines, errors) {
+      const log = byId(target);
+      const value = lines.join("\n");
+      if ((errors ? lastErrorLog : lastMainLog) === value) return;
+      if (errors) lastErrorLog = value;
+      else lastMainLog = value;
+      log.innerHTML = lines.map((line) => {
+        let text = escapeHtml(line);
+        if (errors) {
+          text = text.replace(/รายการที่\s+(\d+)\s+\(([^)]*)\)/g,
+            (_match, index, code) => `รายการที่ <span class="click-copy" data-copy="${escapeHtml(index)}">${escapeHtml(index)}</span> (<span class="click-copy" data-copy="${escapeHtml(code)}">${escapeHtml(code)}</span>)`);
+        }
+        return `<div class="log-line">${text}</div>`;
+      }).join("");
+      log.scrollTop = log.scrollHeight;
+    }
+
+    function renderSequence(state) {
+      const table = byId("sequence-steps");
+      if (selectedStep !== state.selectedStep) selectedStep = state.selectedStep;
+      table.replaceChildren();
+      state.sequence.forEach((step, index) => {
+        const row = document.createElement("tr");
+        if (index === selectedStep) row.classList.add("selected");
+        row.innerHTML = `<td class="step-no">${String(index + 1).padStart(2, "0")}</td><td class="step-kind"></td><td class="step-detail"></td><td class="step-grip">⠿</td>`;
+        row.children[1].textContent = step.action;
+        row.children[2].textContent = step.detail;
+        row.addEventListener("click", async () => {
+          selectedStep = index;
+          await invoke("select_step", index);
+          renderSequence({ ...state, selectedStep: index });
+        });
+        table.append(row);
+      });
+    }
+
+    function renderProfiles(state) {
+      const select = byId("sequence-profile");
+      const current = state.profile;
+      const profiles = ["", ...state.profiles];
+      const currentProfiles = Array.from(select.options, (option) => option.value);
+      if (JSON.stringify(profiles) !== JSON.stringify(currentProfiles)) {
+        select.replaceChildren(new Option("โปรไฟล์ลำดับ: ค่าเริ่มต้น", ""));
+        state.profiles.forEach((profile) => select.add(new Option(profile, profile)));
+      }
+      if (select.value !== current) select.value = current;
+    }
+
+    function renderState(state) {
+      byId("selected-file-name").textContent = state.pdfName || "ยังไม่ได้เลือกไฟล์";
+      byId("file-meta").textContent = state.pdfName ? "พร้อมสแกน" : "เลือก PDF เพื่อเริ่มทำงาน";
+      byId("drop-title").textContent = state.pdfName ? "เลือกไฟล์แล้ว" : "ลากไฟล์ PDF มาวางที่นี่";
+      byId("drop-note").textContent = state.pdfName || "หรือเลือกจากในเครื่อง";
+      byId("file-count").textContent = `พบ ${state.codeCount} รายการ${state.pageCount ? ` · ${state.pageCount} หน้า` : ""}`;
+      byId("run-status").textContent = state.status;
+      byId("main-status").textContent = state.status;
+      byId("completed-count").textContent = `${state.completed} / ${state.codeCount}`;
+      byId("error-count").textContent = state.misfires;
+      byId("stats-summary").textContent = `กรอกแล้ว ${state.completed} · ผิดเงื่อนไข ${state.misfires}`;
+      byId("resume-run").disabled = !state.waiting;
+      byId("start-run").disabled = state.running;
+      byId("stop-run").disabled = !state.running;
+      const shortcuts = state.shortcuts || {};
+      const shortcutLabel = (key) => key || "ไม่ตั้งค่า";
+      byId("shortcut-status").textContent =
+        `เมื่อเริ่มแล้ว ให้โฟกัสหน้าต่างโปรแกรมปลายทาง · เริ่ม ${shortcutLabel(shortcuts.start)} · หยุด ${shortcutLabel(shortcuts.stop)} · ต่อ ${shortcutLabel(shortcuts.resume)}`;
+      if (!initialized || !["weight-value", "start-delay", "start-index", "batch-size"].includes(document.activeElement.id)) {
+        byId("weight-value").value = state.weight;
+        byId("start-delay").value = state.startDelay;
+        byId("start-index").value = state.startIndex;
+        byId("batch-size").value = state.batchSize;
+      }
+      if (!initialized) {
+        byId("only-qrcode").checked = state.onlyQr;
+        byId("reverse-order").checked = state.reverseOrder;
+        byId("dry-run").checked = state.dryRun;
+        byId("paste-method").checked = state.pasteMethod;
+        const stepTypes = [
+          ["TYPE_BARCODE", "พิมพ์บาร์โค้ด"], ["TYPE_WEIGHT", "พิมพ์น้ำหนัก"],
+          ["KEY", "กดคีย์"], ["WAIT", "หน่วงเวลา"], ["WAIT_FOR_TEXT", "รอข้อความ (OCR)"],
+          ["CLICK", "คลิกตำแหน่ง"],
+        ];
+        stepTypes.forEach(([value, label]) => byId("step-type").add(new Option(label, value)));
+      }
+      renderProfiles(state);
+      renderSequence(state);
+      renderLog("main-log", state.mainLog, false);
+      renderLog("error-log", state.errorLog, true);
+      initialized = true;
+    }
+
+    async function refreshState() {
+      if (refreshing || !window.pywebview || !window.pywebview.api) return;
+      refreshing = true;
+      try {
+        renderState(await window.pywebview.api.get_state());
+      } catch (error) {
+        console.error("อ่านสถานะโปรแกรมไม่สำเร็จ", error);
+      } finally {
+        refreshing = false;
+      }
+    }
+
+    byId("choose-pdf").addEventListener("click", async () => {
+      await invoke("choose_pdf");
+      await refreshState();
+    });
+    byId("file-drop").addEventListener("dragover", (event) => {
+      event.preventDefault();
+      byId("file-drop").classList.add("dragging");
+    });
+    byId("file-drop").addEventListener("dragleave", () => byId("file-drop").classList.remove("dragging"));
+    byId("file-drop").addEventListener("drop", async (event) => {
+      event.preventDefault();
+      byId("file-drop").classList.remove("dragging");
+      const files = Array.from(event.dataTransfer.files);
+      const file = files.find((item) => /\.pdf$/i.test(item.name));
+      byId("drop-title").textContent = file ? "กำลังรับไฟล์..." : "กรุณาวางไฟล์ PDF";
+      byId("drop-note").textContent = file ? file.name : "หรือเลือกจากในเครื่อง";
+    });
+    byId("start-run").addEventListener("click", () => invoke("start_run", settings()));
+    byId("stop-run").addEventListener("click", () => invoke("stop_run"));
+    byId("resume-run").addEventListener("click", () => invoke("resume_run"));
+    byId("save-config").addEventListener("click", () => invoke("save_config", settings()));
+    byId("rescan-pdf").addEventListener("click", () => invoke("rescan_pdf"));
+    byId("check-updates").addEventListener("click", () => invoke("check_updates"));
+    byId("clear-main-log").addEventListener("click", () => invoke("clear_log", false));
+    byId("clear-error-log").addEventListener("click", () => invoke("clear_log", true));
+    byId("add-step").addEventListener("click", () => invoke("sequence_action", "add", byId("step-type").value, byId("step-value").value));
+    byId("step-up").addEventListener("click", () => invoke("sequence_action", "up", "", "", selectedStep));
+    byId("step-down").addEventListener("click", () => invoke("sequence_action", "down", "", "", selectedStep));
+    byId("delete-step").addEventListener("click", () => invoke("sequence_action", "delete", "", "", selectedStep));
+    byId("save-profile").addEventListener("click", () => invoke("profile_action", "save"));
+    byId("delete-profile").addEventListener("click", () => invoke("profile_action", "delete"));
+    byId("sequence-profile").addEventListener("change", (event) => invoke("select_profile", event.target.value));
+    byId("step-type").addEventListener("change", (event) => {
+      byId("step-value").value = {
+        KEY: "enter", WAIT: "0.5", WAIT_FOR_TEXT: "10", TYPE_BARCODE: "", TYPE_WEIGHT: "", CLICK: "",
+      }[event.target.value] || "";
+    });
+    byId("error-log").addEventListener("click", (event) => {
+      const value = event.target.dataset.copy;
+      if (value) invoke("copy_value", value);
+    });
+    byId("sequence-steps").addEventListener("dblclick", (event) => {
+      const row = event.target.closest("tr");
+      if (row) invoke("sequence_action", "edit", "", "", Array.from(row.parentElement.children).indexOf(row));
+    });
+    document.querySelectorAll("[data-nav]").forEach((button) => button.addEventListener("click", () => {
+      const target = button.dataset.nav;
+      if (target === "home") window.scrollTo(0, 0);
+      else if (target === "verify") invoke("show_section", "verify");
+      else if (target === "settings") invoke("show_section", "options");
+      else if (target === "paths") invoke("show_section", "paths");
+      else if (target === "codes") invoke("show_section", "codes");
+      else if (target === "shortcuts") invoke("show_section", "shortcuts");
+    }));
+    byId("minimize-window").addEventListener("click", () => invoke("minimize_window"));
+    byId("maximize-window").addEventListener("click", () => invoke("toggle_fullscreen"));
+    byId("close-window").addEventListener("click", () => invoke("close_window"));
+    let dragging = false;
+    let dragOrigin = null;
+    const titlebar = document.querySelector(".window-titlebar");
+    titlebar.addEventListener("pointerdown", (event) => {
+      stopDragging();
+      if (event.button !== 0 || event.target.closest(".window-control")) return;
+      if (event.target !== titlebar && !event.target.closest(".window-title")) return;
+      dragging = true;
+      dragOrigin = { x: event.screenX, y: event.screenY };
+    });
+    document.addEventListener("pointerdown", (event) => {
+      if (!titlebar.contains(event.target)) stopDragging();
+    }, true);
+    window.addEventListener("pointermove", (event) => {
+      if (!dragging || !dragOrigin) return;
+      if (!(event.buttons & 1)) {
+        stopDragging();
+        return;
+      }
+      const deltaX = event.screenX - dragOrigin.x;
+      const deltaY = event.screenY - dragOrigin.y;
+      if (!deltaX && !deltaY) return;
+      dragOrigin = { x: event.screenX, y: event.screenY };
+      invoke("move_window", window.screenX + deltaX, window.screenY + deltaY);
+    });
+    const stopDragging = () => { dragging = false; dragOrigin = null; };
+    window.addEventListener("pointerup", stopDragging);
+    window.addEventListener("pointercancel", stopDragging);
+    window.addEventListener("blur", stopDragging);
+    document.addEventListener("change", (event) => {
+      if (event.target.matches("#weight-value, #start-delay, #start-index, #batch-size, .check")) {
+        invoke("update_settings", settings());
+      }
+    });
+    window.addEventListener("pywebviewready", () => {
+      refreshState();
+      window.setInterval(refreshState, 500);
+    }, { once: true });
+  </script>
+</body>
+</html>

@@ -5,7 +5,7 @@
 
 วิธีติดตั้งไลบรารี Python (รันใน Command Prompt / Terminal):
 
-    pip install pdf2image pyzbar pillow pyautogui pygetwindow pyperclip pytesseract
+    pip install pdf2image zxing-cpp pillow pyautogui pyperclip pytesseract
 
 ต้องติดตั้งโปรแกรมภายนอกเพิ่ม 2 ตัว:
 
@@ -42,22 +42,22 @@ import sys
 import threading
 import time
 import tkinter as tk
+import tkinter.font as tkfont
 from tkinter import ttk, filedialog, messagebox, simpledialog
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+import webview
 
 try:
     from PIL import ImageEnhance, ImageFilter, ImageOps
     import pyautogui
-    import pygetwindow as gw
     import pyperclip
     import pytesseract
     from pdf2image import convert_from_path
-    from pyzbar.pyzbar import decode as decode_barcodes
-    from pyzbar.pyzbar import ZBarSymbol
+    import zxingcpp
 except ImportError as e:
     print("ยังติดตั้งไลบรารีไม่ครบ:", e)
-    print("รันคำสั่งนี้ก่อน: pip install pdf2image pyzbar pillow pyautogui pygetwindow pyperclip pytesseract")
+    print("รันคำสั่งนี้ก่อน: pip install pdf2image zxing-cpp pillow pyautogui pyperclip pytesseract")
     raise SystemExit(1)
 
 try:
@@ -69,8 +69,8 @@ except ImportError:
 pyautogui.FAILSAFE = True   # เลื่อนเมาส์ไปมุมซ้ายบน (0,0) เพื่อหยุดฉุกเฉิน
 pyautogui.PAUSE = 0.03
 
-APP_VERSION = "1.0.0"
-GITHUB_REPOSITORY = "dexnkitxyz/kexauto"
+APP_VERSION = "1.0.2"
+GITHUB_REPOSITORY = "dexnkitxyz/kexautokit"
 GITHUB_RELEASES_API = f"https://api.github.com/repos/{GITHUB_REPOSITORY}/releases/latest"
 
 # In a one-file build, bundled resources are extracted temporarily. User
@@ -109,7 +109,6 @@ DEFAULT_CONFIG = {
     "dpi": 150,
     "pdf_path": "",
     "poppler_path": "",
-    "target_window_title": "",
     "default_weight": "0.49",
     "start_delay": 5,
     "dry_run": False,
@@ -117,6 +116,7 @@ DEFAULT_CONFIG = {
     "restore_clipboard": True,
     "force_english_layout": True,
     "only_qrcode": True,
+    "dark_mode": True,
     "ocr_lang": "tha+eng",
     "tesseract_path": "",
     "ocr_region": None,
@@ -131,6 +131,7 @@ DEFAULT_CONFIG = {
     "shortcuts": {
         "start": "F6",
         "stop": "F7",
+        "resume": "F8",
     },
     # ลำดับการทำงานต่อ 1 บาร์โค้ด — แก้ไข/เรียงใหม่ได้จากหน้าโปรแกรม
     "sequence": [
@@ -144,31 +145,49 @@ DEFAULT_CONFIG = {
 }
 
 LIGHT_PALETTE = {
-    "bg": "#f0f0f0",
-    "fg": "#1a1a1a",
+    "bg": "#f3f6fb",
+    "fg": "#17243a",
+    "muted": "#718096",
+    "line": "#e5eaf1",
     "entry_bg": "#ffffff",
-    "header_bg": "#e8e8e8",
-    "header_fg": "#333333",
+    "header_bg": "#f7f9fc",
+    "header_fg": "#43516a",
+    "surface_bg": "#ffffff",
+    "drop_bg": "#f8faff",
+    "drop_fg": "#42536d",
+    "nav_active": "#eef4ff",
+    "button_primary": "#2864e8",
+    "button_danger": "#fff0f1",
+    "button_success": "#eaf8f1",
     "log_bg": "#ffffff",
-    "log_fg": "#000000",
-    "fail_fg": "#b91c1c",
+    "log_fg": "#56657b",
+    "fail_fg": "#c53f4e",
     "select_bg": "#cfe8ff",
     "tree_bg": "#ffffff",
-    "tree_fg": "#000000",
+    "tree_fg": "#17243a",
 }
 
 DARK_PALETTE = {
-    "bg": "#2b2b2b",
-    "fg": "#e0e0e0",
-    "entry_bg": "#3c3f41",
-    "header_bg": "#3a3a3a",
-    "header_fg": "#e0e0e0",
-    "log_bg": "#1e1e1e",
-    "log_fg": "#d4d4d4",
-    "fail_fg": "#ff6b6b",
-    "select_bg": "#3a5a8c",
-    "tree_bg": "#313335",
-    "tree_fg": "#e0e0e0",
+    "bg": "#101826",
+    "fg": "#e4ebf5",
+    "muted": "#94a3b8",
+    "line": "#2b394c",
+    "entry_bg": "#1d2a3d",
+    "header_bg": "#1c293b",
+    "header_fg": "#d4deec",
+    "surface_bg": "#182334",
+    "drop_bg": "#17263b",
+    "drop_fg": "#d3e0f3",
+    "nav_active": "#233653",
+    "button_primary": "#3976ed",
+    "button_danger": "#422b36",
+    "button_success": "#1c3b36",
+    "log_bg": "#141f2e",
+    "log_fg": "#bcc9dc",
+    "fail_fg": "#ff8390",
+    "select_bg": "#29466d",
+    "tree_bg": "#182334",
+    "tree_fg": "#e4ebf5",
 }
 
 STEP_LABELS = {
@@ -228,13 +247,12 @@ def rule_to_display(rule):
     return f"เจอ '{kw}' → {action}"
 
 
-def extract_barcodes(pdf_path, poppler_path="", only_qrcode=True, dpi=150):
+def extract_barcodes_with_pages(pdf_path, poppler_path="", only_qrcode=True, dpi=150):
     """อ่าน PDF ทีละหน้า แปลงเป็นรูป แล้วถอดบาร์โค้ดทั้งหมด เรียงบนลงล่างตามหน้า
 
     only_qrcode=True: เก็บเฉพาะ QR Code (สี่เหลี่ยมจัตุรัส) ตัดบาร์โค้ดเส้นตรง
     แบบ 1D (เช่น CODE128, EAN13) ทิ้งไป เผื่อใน 1 ใบมีบาร์โค้ดหลายแบบปนกัน
-    แต่ต้องการใช้แค่ QR Code ตัวเดียว — และยังเร็วขึ้นด้วย เพราะบอก pyzbar
-    ให้มองหาแค่ QR Code ตั้งแต่แรก ไม่ต้องเสียเวลาตรวจชนิดอื่น
+    แต่ต้องการใช้แค่ QR Code ตัวเดียว — จำกัดชนิดบาร์โค้ดให้ตัวอ่าน ZXing-C++ ตั้งแต่แรก
 
     dpi: ความละเอียดตอนแปลงหน้า PDF เป็นรูป ยิ่งต่ำยิ่งเร็ว (ค่า default ลดจาก
     200 เหลือ 150 ซึ่งปกติยังคมพอสำหรับอ่าน QR Code) ปรับได้จากหน้าโปรแกรม
@@ -246,21 +264,36 @@ def extract_barcodes(pdf_path, poppler_path="", only_qrcode=True, dpi=150):
     workers = max(2, min(8, cpu_count))
     # thread_count ให้ Poppler แปลงหลายหน้าพร้อมกัน (เร็วขึ้นมากถ้า PDF มีหลายหน้า)
     pages = convert_from_path(pdf_path, dpi=dpi, thread_count=workers, **kwargs)
-    symbols = [ZBarSymbol.QRCODE] if only_qrcode else None
+    formats = zxingcpp.BarcodeFormat.QRCode if only_qrcode else zxingcpp.BarcodeFormat.All
 
-    def decode_one_page(page_img):
-        found = decode_barcodes(page_img, symbols=symbols) if symbols else decode_barcodes(page_img)
-        found.sort(key=lambda b: (b.rect.top, b.rect.left))
-        return [b.data.decode("utf-8", errors="ignore") for b in found]
+    def decode_one_page(page_index_and_image):
+        page_index, page_img = page_index_and_image
+        found = zxingcpp.read_barcodes(page_img, formats=formats)
+        found.sort(key=lambda barcode: (barcode.position.top_left.y, barcode.position.top_left.x))
+        return [
+            (barcode.bytes.decode("utf-8", errors="ignore"), page_index + 1)
+            for barcode in found
+        ]
 
-    # ถอดรหัสบาร์โค้ดหลายหน้าพร้อมกัน (แทนที่จะไล่ทีละหน้า) เร็วขึ้นมากบนเครื่องหลายคอร์
+    # ถอดรหัสบาร์โค้ดหลายหน้าพร้อมกัน และเก็บเลขหน้าไว้ใช้แสดงใน log
     codes = []
+    page_numbers = []
+    seen_codes = set()
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
-        for page_codes in executor.map(decode_one_page, pages):
-            codes.extend(page_codes)
-    # A QR code can be detected more than once (for example when it appears
-    # on overlapping/duplicate PDF pages). Keep the first occurrence only.
-    return deduplicate_codes(codes)
+        for page_codes in executor.map(decode_one_page, enumerate(pages)):
+            for code, page_number in page_codes:
+                normalized = " ".join(str(code).split()).casefold()
+                if normalized and normalized not in seen_codes:
+                    seen_codes.add(normalized)
+                    codes.append(str(code).strip())
+                    page_numbers.append(page_number)
+    return codes, page_numbers, len(pages)
+
+
+def extract_barcodes(pdf_path, poppler_path="", only_qrcode=True, dpi=150):
+    """Compatibility wrapper returning decoded barcode text without page metadata."""
+    codes, _, _ = extract_barcodes_with_pages(pdf_path, poppler_path, only_qrcode, dpi)
+    return codes
 
 
 def deduplicate_codes(codes):
@@ -323,13 +356,13 @@ class CollapsibleFrame(tk.Frame):
         if locked:
             # ล็อกไว้ ไม่มีปุ่มพับ/กาง หัวข้อกดไม่ได้
             title_label = tk.Label(header, text=title, bg="#e8e8e8", fg="#333", font=("", 9, "bold"))
-            title_label.pack(side="left", fill="x", expand=True, padx=8, pady=4)
+            title_label.pack(side="left", padx=8, pady=4)
         else:
             self.toggle_btn = tk.Label(header, text="▼", width=3, bg="#e8e8e8", fg="#333", cursor="hand2", font=("", 10, "bold"))
             self.toggle_btn.pack(side="left", padx=4, pady=4)
 
             title_label = tk.Label(header, text=title, bg="#e8e8e8", fg="#333", font=("", 9, "bold"))
-            title_label.pack(side="left", fill="x", expand=True, padx=(0, 4), pady=4)
+            title_label.pack(side="left", padx=(0, 4), pady=4)
 
             self.toggle_btn.bind("<Button-1>", lambda e: self.toggle())
             title_label.bind("<Button-1>", lambda e: self.toggle())
@@ -342,12 +375,17 @@ class CollapsibleFrame(tk.Frame):
         self.inner_frame.pack(fill="both", expand=True)
 
     def apply_theme(self, palette):
-        self.configure(bg=palette["bg"])
+        self.configure(
+            bg=palette["surface_bg"],
+            highlightthickness=1,
+            highlightbackground=palette["line"],
+            highlightcolor=palette["line"],
+        )
         self.header.configure(bg=palette["header_bg"])
         self.title_label.configure(bg=palette["header_bg"], fg=palette["header_fg"])
         if self.toggle_btn is not None:
             self.toggle_btn.configure(bg=palette["header_bg"], fg=palette["header_fg"])
-        self.inner_frame.configure(bg=palette["bg"])
+        self.inner_frame.configure(bg=palette["surface_bg"])
 
     def toggle(self):
         if self.locked:
@@ -448,6 +486,8 @@ class AutoReceiveApp:
             root.iconbitmap(icon_path)
         root.geometry("1200x800")
         root.minsize(1200, 800)
+        root.maxsize(1200, 800)
+        root.resizable(False, False)
 
         self.config_data = self.load_config_file()
         self.sequence_profiles = self.load_sequence_profiles_file()
@@ -456,6 +496,7 @@ class AutoReceiveApp:
         self.fail_log_queue = queue.Queue()
         self.stop_event = threading.Event()
         self.resume_event = threading.Event()
+        self.waiting_for_resume = False
         self.worker_thread = None
         self.ocr_region = self.config_data.get("ocr_region")
         self.verify_region = self.config_data.get("verify_region")
@@ -465,11 +506,16 @@ class AutoReceiveApp:
         self._shortcut_bindings = []
         self.stats = {"completed": 0, "cancel": 0, "duplicate": 0, "misfire": 0}
         self._misfire_keys = set()
+        self.extracted_code_pages = []
+        self.pdf_page_count = 0
+        self.extracted_codes_pdf_path = ""
+        self._copy_tag_counter = 0
         self.extracted_codes = self.load_codes_cache()
         self.extracted_codes = deduplicate_codes(self.extracted_codes)
-        self.dark_mode = False
+        self.dark_mode = True
         self.section_dialogs = []
         self.collapsible_frames = []
+        self.theme_frames = []
 
         self.build_ui()
         self.setup_shortcuts()
@@ -530,6 +576,9 @@ class AutoReceiveApp:
             try:
                 with open(CODES_CACHE_FILE, "r", encoding="utf-8") as f:
                     data = json.load(f)
+                self.extracted_code_pages = data.get("page_numbers", [])
+                self.pdf_page_count = int(data.get("pdf_page_count", 0) or 0)
+                self.extracted_codes_pdf_path = data.get("pdf_path", "")
                 return data.get("codes", [])
             except Exception:
                 return []
@@ -540,6 +589,8 @@ class AutoReceiveApp:
             json.dump(
                 {
                     "codes": self.extracted_codes,
+                    "page_numbers": self.extracted_code_pages,
+                    "pdf_page_count": self.pdf_page_count,
                     "pdf_path": self.pdf_path_var.get(),
                     "saved_at": time.strftime("%Y-%m-%d %H:%M:%S"),
                 },
@@ -565,7 +616,6 @@ class AutoReceiveApp:
         return {
             "pdf_path": self.pdf_path_var.get(),
             "poppler_path": self.poppler_path_var.get(),
-            "target_window_title": self.window_title_var.get(),
             "default_weight": self.weight_var.get(),
             "start_delay": int(self.delay_var.get() or 5),
             "start_index": int(self.start_index_var.get() or 1),
@@ -578,6 +628,7 @@ class AutoReceiveApp:
             "restore_clipboard": self.restore_clipboard_var.get(),
             "force_english_layout": self.force_english_layout_var.get(),
             "only_qrcode": self.only_qrcode_var.get(),
+            "dark_mode": self.dark_mode,
             "dpi": int(self.dpi_var.get() or 150),
             "ocr_lang": self.ocr_lang_var.get(),
             "tesseract_path": self.tesseract_path_var.get(),
@@ -595,102 +646,78 @@ class AutoReceiveApp:
 
     # ---------- UI ----------
     def build_ui(self):
-        pad = {"padx": 8, "pady": 4}
-
-        # ---------- แถบเครื่องมือด้านบน (คงที่ ไม่เลื่อนตามเนื้อหา) ----------
-        toolbar = ttk.Frame(self.root)
+        toolbar = ttk.Frame(self.root, style="Toolbar.TFrame")
         toolbar.pack(side="top", fill="x")
-        ttk.Button(toolbar, text="📂 ดึงบาร์โค้ด", command=self.preview_barcodes).pack(
-            side="left", padx=(6, 2), pady=4
+        ttk.Label(toolbar, text="KexAuto", style="Brand.TLabel").pack(
+            side="left", padx=(14, 5), pady=7
         )
-        ttk.Button(toolbar, text="💾 บันทึก", command=lambda: self.save_config_to_disk()).pack(
-            side="left", padx=2, pady=4
+        ttk.Label(toolbar, text="PDF AUTOMATION", style="ToolbarMuted.TLabel", font=("", 8, "bold")).pack(
+            side="left", padx=(0, 10), pady=7
         )
-        ttk.Separator(toolbar, orient="vertical").pack(side="left", fill="y", padx=6, pady=4)
-        ttk.Button(toolbar, text="▶ เริ่มทำงาน", command=self.start_automation).pack(
-            side="left", padx=2, pady=4
+        ttk.Button(toolbar, text="บันทึกการตั้งค่า", command=lambda: self.save_config_to_disk()).pack(
+            side="right", padx=(2, 12), pady=5
         )
-        ttk.Button(toolbar, text="■ หยุด", command=self.stop_automation).pack(side="left", padx=2, pady=4)
-        self.resume_btn = ttk.Button(
-            toolbar, text="▶ ดำเนินการต่อ", command=self.resume_automation, state="disabled"
-        )
-        self.resume_btn.pack(side="left", padx=2, pady=4)
         ttk.Button(toolbar, text="อัปเดต", command=self.check_for_updates).pack(
-            side="left", padx=2, pady=4
+            side="right", padx=2, pady=5
         )
-        ttk.Separator(toolbar, orient="vertical").pack(side="left", fill="y", padx=6, pady=4)
         self.moon_btn_var = tk.StringVar(value="🌙")
-        ttk.Button(toolbar, textvariable=self.moon_btn_var, width=3, command=self.toggle_theme).pack(
-            side="right", padx=(4, 8), pady=4
+        self.theme_btn = ttk.Button(
+            toolbar, textvariable=self.moon_btn_var, width=3, command=self.toggle_theme
         )
+        self.theme_btn.pack(side="right", padx=2, pady=5)
         self.stats_var = tk.StringVar()
         self._update_stats_label()
-        ttk.Label(toolbar, textvariable=self.stats_var, foreground="#164e63").pack(
-            side="right", padx=8, pady=4
+        ttk.Label(toolbar, textvariable=self.stats_var, style="Stats.TLabel").pack(
+            side="right", padx=12, pady=5
         )
-        ttk.Separator(toolbar, orient="horizontal").pack(side="top", fill="x")
+        ttk.Separator(self.root, orient="horizontal").pack(side="top", fill="x")
 
-        # ---------- ห่อทั้งหน้าด้วย canvas+scrollbar ให้เลื่อนดูได้ ----------
         outer = ttk.Frame(self.root)
         outer.pack(fill="both", expand=True)
-        canvas = tk.Canvas(outer, highlightthickness=0)
-        self.canvas = canvas
-        vscroll = ttk.Scrollbar(outer, orient="vertical", command=canvas.yview)
-        canvas.configure(yscrollcommand=vscroll.set)
-        canvas.pack(side="left", fill="both", expand=True)
-        vscroll.pack(side="right", fill="y")
-
-        scroll_frame = ttk.Frame(canvas)
-        scroll_window = canvas.create_window((0, 0), window=scroll_frame, anchor="nw")
-
-        def on_frame_configure(_e):
-            canvas.configure(scrollregion=canvas.bbox("all"))
-
-        def on_canvas_configure(e):
-            canvas.itemconfig(scroll_window, width=e.width)
-
-        scroll_frame.bind("<Configure>", on_frame_configure)
-        canvas.bind("<Configure>", on_canvas_configure)
-
-        def on_mousewheel(e):
-            canvas.yview_scroll(int(-1 * (e.delta / 120)), "units")
-
-        canvas.bind_all("<MouseWheel>", on_mousewheel)
-        self.root = scroll_frame  # เนื้อหาด้านล่างทั้งหมดแนบกับ scroll_frame แทน root โดยตรง
+        self.root = outer
         self._real_root = outer.winfo_toplevel()  # เก็บ toplevel จริงไว้ใช้ตอน withdraw/deiconify
 
-        # ---------- ปุ่มเมนูซ้ายสุด: เปิดหน้าต่างตั้งค่าแยกแต่ละหัวข้อ ----------
         nav_frame = ttk.Frame(self.root)
-        nav_frame.pack(side="left", fill="y", padx=(4, 0), pady=4)
-        ttk.Label(nav_frame, text="เมนู", font=("", 9, "bold")).pack(pady=(2, 6))
-        self.nav_buttons = {}  # เก็บไว้เผื่อใช้อ้างอิงทีหลัง
+        nav_frame.pack(side="top", fill="x", padx=10, pady=(4, 2))
+        self.nav_buttons = {}
 
         def create_nav_button(text, command):
             return tk.Button(
                 nav_frame,
                 text=text,
-                width=10,
-                height=2,
+                width=13,
+                height=1,
                 anchor="center",
                 justify="center",
+                relief="flat",
+                borderwidth=0,
+                padx=8,
+                pady=5,
+                cursor="hand2",
                 command=command,
             )
 
-        main_area = ttk.Frame(self.root)
-        main_area.pack(side="left", fill="both", expand=True, padx=4, pady=4)
+        self.home_nav_label = tk.Label(
+            nav_frame, text="▣  หน้าหลัก", width=13, padx=8, pady=5, anchor="center",
+            relief="flat", borderwidth=0, font=("", 9, "bold"),
+        )
+        self.home_nav_label.pack(side="left", padx=2, pady=2)
 
-        target_bar = ttk.Frame(main_area)
-        target_bar.pack(fill="x", pady=(0, 4))
-        ttk.Label(target_bar, text="ชื่อหน้าต่างโปรแกรมเป้าหมาย:").pack(side="left")
-        self.window_title_var = tk.StringVar(value=self.config_data.get("target_window_title", ""))
-        self.window_combo = ttk.Combobox(target_bar, textvariable=self.window_title_var)
-        self.window_combo.pack(side="left", fill="x", expand=True, padx=6)
-        ttk.Button(target_bar, text="รีเฟรชรายชื่อหน้าต่าง", command=self.refresh_windows).pack(side="left")
+        main_area = ttk.Frame(self.root)
+        main_area.pack(side="top", fill="both", expand=True, padx=14, pady=(3, 10))
+        content_header = ttk.Frame(main_area)
+        content_header.pack(fill="x", pady=(2, 7))
+        ttk.Label(content_header, text="หน้าหลัก", style="PageTitle.TLabel").pack(side="left")
+        ttk.Label(
+            content_header,
+            text="จัดการงานอ่านบาร์โค้ดและควบคุมการทำงาน",
+            style="Muted.TLabel",
+        ).pack(side="left", padx=(10, 0), pady=(7, 0))
 
         frm_file = SectionDialog(self._real_root, "ไฟล์ (พาธที่เกี่ยวข้อง)")
         self.section_dialogs.append(frm_file)
-        nav_btn1 = create_nav_button("📁\nไฟล์", frm_file.show)
-        nav_btn1.pack(pady=3, fill="x")
+        nav_btn1 = create_nav_button("ไฟล์ / พาธ", frm_file.show)
+        nav_btn1.pack(side="left", padx=2, pady=2)
         self.nav_buttons["file"] = nav_btn1
 
         self.pdf_path_var = tk.StringVar(value=self.config_data.get("pdf_path", ""))
@@ -719,33 +746,29 @@ class AutoReceiveApp:
 
         frm_file.inner_frame.columnconfigure(1, weight=1)
 
-        frm_seq = CollapsibleFrame(
-            main_area,
-            title="ลำดับการทำงาน",
-            tooltip="ลำดับการทำงานต่อ 1 บาร์โค้ด — แก้ให้ตรงกับโปรแกรมจริงของคุณ",
-            locked=True,
+        file_card = ttk.Frame(main_area, padding=(9, 8), style="Card.TFrame")
+        file_card.pack(fill="x", pady=(0, 7))
+        drop_frame = tk.Frame(
+            file_card, relief="flat", borderwidth=0, highlightthickness=1,
+            highlightbackground="#b8c9e5", bg="#f8faff",
         )
-        frm_seq.pack(fill="both", expand=True, **pad)
-        self.collapsible_frames.append(frm_seq)
-
-        drop_frame = tk.Frame(frm_seq.inner_frame, relief="ridge", borderwidth=2, bg="#f5f5f5")
-        drop_frame.grid(row=0, column=0, columnspan=5, sticky="we", padx=4, pady=(4, 8))
+        drop_frame.pack(fill="x")
         self.drop_frame = drop_frame
-
         existing_name = os.path.basename(self.pdf_path_var.get()) if self.pdf_path_var.get() else ""
         self.drop_label_var = tk.StringVar(
-            value=f"✅ {existing_name}" if existing_name else "📄 ลากไฟล์ PDF มาวางตรงนี้"
+            value=f"✓  {existing_name}" if existing_name else "⇧  ลากไฟล์ PDF มาวางที่นี่ หรือเลือกจากในเครื่อง"
         )
         drop_label = tk.Label(
-            drop_frame, textvariable=self.drop_label_var, bg="#f5f5f5", fg="#555", font=("", 10), pady=10
+            drop_frame, textvariable=self.drop_label_var, bg="#f8faff", fg="#42536d",
+            font=("", 10), anchor="w", padx=12, pady=9,
         )
-        drop_label.pack(fill="x")
+        drop_label.pack(side="left", fill="x", expand=True)
         self.drop_label = drop_label
-
-        browse_btn_frame = tk.Frame(drop_frame, bg="#f5f5f5")
-        browse_btn_frame.pack(pady=(0, 12))
+        browse_btn_frame = tk.Frame(drop_frame, bg="#f8faff")
+        browse_btn_frame.pack(side="right", padx=5, pady=3)
         self.browse_btn_frame = browse_btn_frame
-        ttk.Button(browse_btn_frame, text="📂 เลือกไฟล์ PDF", command=self.browse_pdf).pack()
+        ttk.Button(browse_btn_frame, text="เลือก PDF", command=self.browse_pdf).pack(side="left", padx=2)
+        ttk.Button(browse_btn_frame, text="สแกนใหม่", command=self.preview_barcodes).pack(side="left", padx=2)
 
         if DND_AVAILABLE:
             for widget in (drop_frame, drop_label, browse_btn_frame):
@@ -756,25 +779,65 @@ class AutoReceiveApp:
             ToolTip(drop_frame, hint)
             ToolTip(drop_label, hint)
 
-        ttk.Separator(frm_seq.inner_frame, orient="horizontal").grid(
-            row=1, column=0, columnspan=5, sticky="we", padx=4, pady=6
+        action_bar = ttk.Frame(main_area, padding=(10, 7), style="Card.TFrame")
+        action_bar.pack(fill="x", pady=(0, 8))
+        self.action_bar = action_bar
+        ttk.Label(action_bar, text="พร้อมทำงาน", style="CardTitle.TLabel").pack(
+            side="left", padx=(2, 8)
+        )
+        ttk.Label(
+            action_bar,
+            text="โฟกัสหน้าต่างโปรแกรมปลายทางก่อนเริ่ม  ·  F6 เริ่ม  ·  F7 หยุด  ·  F8 ต่อ",
+            style="Muted.TLabel",
+        ).pack(side="left", padx=(0, 8))
+        self.resume_btn = ttk.Button(
+            action_bar, text="▶ ดำเนินการต่อ", command=self.resume_automation, state="disabled",
+            style="Success.TButton",
+        )
+        self.resume_btn.pack(side="right", padx=(3, 2))
+        ttk.Button(action_bar, text="■ หยุด", command=self.stop_automation, style="Danger.TButton").pack(
+            side="right", padx=3
+        )
+        ttk.Button(action_bar, text="▶ เริ่มทำงาน", command=self.start_automation, style="Accent.TButton").pack(
+            side="right", padx=3
         )
 
+        settings_card = ttk.Frame(main_area, padding=(10, 7), style="Card.TFrame")
+        self.settings_card = settings_card
+        settings_card.pack(fill="x", pady=(0, 8))
+        settings_heading = ttk.Frame(settings_card, style="Surface.TFrame")
+        settings_heading.pack(fill="x", pady=(0, 6))
+        ttk.Label(settings_heading, text="ตั้งค่ารอบนี้", style="CardTitle.TLabel").pack(side="left")
+        ttk.Label(settings_heading, text="แก้ไขได้ก่อนเริ่มทำงาน", style="CardMuted.TLabel").pack(
+            side="right"
+        )
+
+        run_options = ttk.Frame(settings_card, style="Surface.TFrame")
+        run_options.pack(fill="x")
+        for option_column in range(4):
+            run_options.columnconfigure(option_column, weight=1, uniform="run-option")
+
         self.weight_var = tk.StringVar(value=self.config_data.get("default_weight", "0.49"))
-        ttk.Label(frm_seq.inner_frame, text="น้ำหนัก default:").grid(row=3, column=0, sticky="w", padx=4)
-        ttk.Entry(frm_seq.inner_frame, textvariable=self.weight_var, width=10).grid(row=3, column=1, sticky="w")
+        weight_group = ttk.Frame(run_options, style="Surface.TFrame")
+        weight_group.grid(row=0, column=0, sticky="ew", padx=(0, 8))
+        ttk.Label(weight_group, text="น้ำหนักเริ่มต้น", style="CardMuted.TLabel").pack(anchor="w")
+        ttk.Entry(weight_group, textvariable=self.weight_var, width=12).pack(fill="x", pady=(3, 0))
 
         self.delay_var = tk.StringVar(value=str(self.config_data.get("start_delay", 5)))
-        delay_label = ttk.Label(frm_seq.inner_frame, text="นับถอยหลัง:")
-        delay_label.grid(row=3, column=2, sticky="w")
-        ToolTip(delay_label, "วินาทีที่รอก่อนเริ่ม ให้เวลาสลับไปโฟกัสโปรแกรมเป้าหมาย")
-        ttk.Entry(frm_seq.inner_frame, textvariable=self.delay_var, width=6).grid(row=3, column=3, sticky="w")
+        delay_group = ttk.Frame(run_options, style="Surface.TFrame")
+        delay_group.grid(row=0, column=1, sticky="ew", padx=4)
+        delay_label = ttk.Label(delay_group, text="นับถอยหลังก่อนเริ่ม (วินาที)", style="CardMuted.TLabel")
+        delay_label.pack(anchor="w")
+        ToolTip(delay_label, "วินาทีที่รอก่อนเริ่ม ให้เวลาสลับไปโฟกัสโปรแกรมปลายทาง")
+        ttk.Entry(delay_group, textvariable=self.delay_var, width=12).pack(fill="x", pady=(3, 0))
 
         self.start_index_var = tk.StringVar(value=str(self.config_data.get("start_index", 1)))
-        start_idx_label = ttk.Label(frm_seq.inner_frame, text="เริ่มจากรายการที่:")
-        start_idx_label.grid(row=4, column=0, sticky="w", padx=4, pady=(4, 0))
-        start_idx_entry = ttk.Entry(frm_seq.inner_frame, textvariable=self.start_index_var, width=6)
-        start_idx_entry.grid(row=4, column=1, sticky="w", pady=(4, 0))
+        start_group = ttk.Frame(run_options, style="Surface.TFrame")
+        start_group.grid(row=0, column=2, sticky="ew", padx=4)
+        start_idx_label = ttk.Label(start_group, text="เริ่มจากรายการที่", style="CardMuted.TLabel")
+        start_idx_label.pack(anchor="w")
+        start_idx_entry = ttk.Entry(start_group, textvariable=self.start_index_var, width=12)
+        start_idx_entry.pack(fill="x", pady=(3, 0))
         start_idx_tip = (
             "ใส่เลขลำดับที่ต้องการเริ่ม เช่น เคยทำถึงรายการ 10 แล้ว "
             "อยากเริ่มใหม่จากรายการ 5 ให้ใส่ 5"
@@ -783,27 +846,46 @@ class AutoReceiveApp:
         ToolTip(start_idx_entry, start_idx_tip)
 
         self.batch_size_var = tk.StringVar(value=str(self.config_data.get("batch_size", 70)))
-        batch_label = ttk.Label(frm_seq.inner_frame, text="หยุดพักทุกๆ (รอบ):")
-        batch_label.grid(row=5, column=0, sticky="w", padx=4, pady=(4, 0))
-        batch_entry = ttk.Entry(frm_seq.inner_frame, textvariable=self.batch_size_var, width=6)
-        batch_entry.grid(row=5, column=1, sticky="w", pady=(4, 0))
+        batch_group = ttk.Frame(run_options, style="Surface.TFrame")
+        batch_group.grid(row=0, column=3, sticky="ew", padx=(8, 0))
+        batch_label = ttk.Label(batch_group, text="หยุดพักทุก ๆ (รอบ)", style="CardMuted.TLabel")
+        batch_label.pack(anchor="w")
+        batch_entry = ttk.Entry(batch_group, textvariable=self.batch_size_var, width=12)
+        batch_entry.pack(fill="x", pady=(3, 0))
         tip_text = "กันระบบเป้าหมายขัดข้องเมื่อคีย์ติดต่อกันนานเกินไป — ใส่ 0 ถ้าไม่ต้องการหยุดพัก"
         ToolTip(batch_label, tip_text)
         ToolTip(batch_entry, tip_text)
 
+        self.dry_run_var = tk.BooleanVar(value=self.config_data.get("dry_run", False))
+        self.only_qrcode_var = tk.BooleanVar(value=self.config_data.get("only_qrcode", True))
+        self.paste_method_var = tk.BooleanVar(value=self.config_data.get("paste_method", True))
         self.reverse_order_var = tk.BooleanVar(value=self.config_data.get("reverse_order", False))
-        cb_reverse = ttk.Checkbutton(
-            frm_seq.inner_frame, text="เรียงจากรายการสุดท้ายมาแรกสุด", variable=self.reverse_order_var
+        quick_options = ttk.Frame(settings_card, style="Surface.TFrame")
+        quick_options.pack(fill="x", pady=(5, 0))
+        ttk.Checkbutton(
+            quick_options, text="ทดสอบ (ไม่พิมพ์จริง)", variable=self.dry_run_var, style="Card.TCheckbutton"
+        ).pack(
+            side="left", padx=(0, 12)
         )
-        cb_reverse.grid(row=5, column=2, columnspan=3, sticky="w", pady=(4, 0))
+        ttk.Checkbutton(
+            quick_options, text="อ่านเฉพาะ QR Code", variable=self.only_qrcode_var, style="Card.TCheckbutton"
+        ).pack(
+            side="left", padx=(0, 12)
+        )
+        ttk.Checkbutton(
+            quick_options, text="วางจากคลิปบอร์ด", variable=self.paste_method_var, style="Card.TCheckbutton"
+        ).pack(
+            side="left", padx=(0, 12)
+        )
+        cb_reverse = ttk.Checkbutton(
+            quick_options, text="เรียงจากรายการสุดท้าย", variable=self.reverse_order_var,
+            style="Card.TCheckbutton",
+        )
+        cb_reverse.pack(side="left")
         ToolTip(
             cb_reverse,
             "กลับลำดับการประมวลผลทั้งหมด: เริ่มจากรายการสุดท้ายในไฟล์ PDF ไล่ย้อนมาจนถึงรายการแรก "
             "แทนที่จะเริ่มจากรายการแรกตามปกติ",
-        )
-
-        ttk.Separator(frm_seq.inner_frame, orient="horizontal").grid(
-            row=6, column=0, columnspan=5, sticky="we", padx=4, pady=6
         )
 
         self.sequence = copy.deepcopy(self.config_data.get("sequence", DEFAULT_CONFIG["sequence"]))
@@ -816,32 +898,42 @@ class AutoReceiveApp:
         elif active_profile:
             self.sequence_profile_var.set("")
 
-        ttk.Label(frm_seq.inner_frame, text="โปรไฟล์ลำดับ:").grid(
-            row=7, column=0, sticky="w", padx=4, pady=(4, 0)
-        )
+        sequence_card = ttk.Frame(main_area, padding=(8, 6), style="Card.TFrame")
+        self.sequence_card = sequence_card
+        sequence_card.pack(fill="x", pady=(0, 8))
+        sequence_heading = ttk.Frame(sequence_card, style="Surface.TFrame")
+        sequence_heading.pack(fill="x", pady=(0, 4))
+        ttk.Label(sequence_heading, text="ลำดับการทำงาน", style="CardTitle.TLabel").pack(side="left")
+        ttk.Label(
+            sequence_heading,
+            text="ดับเบิลคลิกแถวเพื่อแก้ไขสเต็ป",
+            style="CardMuted.TLabel",
+        ).pack(side="right")
+        sequence_toolbar = ttk.Frame(sequence_card, style="Surface.TFrame")
+        sequence_toolbar.pack(fill="x", pady=(0, 5))
+        profile_bar = ttk.Frame(sequence_toolbar, style="Surface.TFrame")
+        profile_bar.pack(side="left", fill="x")
+        ttk.Label(profile_bar, text="โปรไฟล์ลำดับ:", style="CardMuted.TLabel").pack(side="left", padx=(2, 5))
         self.sequence_profile_combo = ttk.Combobox(
-            frm_seq.inner_frame,
+            profile_bar,
             textvariable=self.sequence_profile_var,
             values=sorted(self.sequence_profiles),
             state="readonly",
-            width=28,
+            width=19,
         )
-        self.sequence_profile_combo.grid(row=7, column=1, sticky="w", padx=2, pady=(4, 0))
+        self.sequence_profile_combo.pack(side="left", padx=2)
         self.sequence_profile_combo.bind("<<ComboboxSelected>>", self.apply_sequence_profile)
         ttk.Button(
-            frm_seq.inner_frame, text="บันทึกเป็นโปรไฟล์...", command=self.save_sequence_profile
-        ).grid(row=7, column=2, padx=2, pady=(4, 0))
+            profile_bar, text="บันทึกโปรไฟล์", command=self.save_sequence_profile
+        ).pack(side="left", padx=2)
         ttk.Button(
-            frm_seq.inner_frame, text="ลบโปรไฟล์", command=self.delete_sequence_profile
-        ).grid(row=7, column=3, padx=2, pady=(4, 0))
+            profile_bar, text="ลบโปรไฟล์", command=self.delete_sequence_profile
+        ).pack(side="left", padx=2)
 
-        seq_tree_frame = ttk.Frame(frm_seq.inner_frame)
-        seq_tree_frame.grid(row=8, column=0, columnspan=5, sticky="nswe", padx=4, pady=4)
-        frm_seq.inner_frame.rowconfigure(8, weight=1)
-        for _col in range(5):
-            frm_seq.inner_frame.columnconfigure(_col, weight=1)
+        seq_tree_frame = ttk.Frame(sequence_card, style="Surface.TFrame")
+        seq_tree_frame.pack(fill="x", pady=(0, 4))
         self.seq_tree = ttk.Treeview(
-            seq_tree_frame, columns=("action", "detail"), show="tree headings", height=20, selectmode="browse"
+            seq_tree_frame, columns=("action", "detail"), show="tree headings", height=5, selectmode="browse"
         )
         self.seq_tree.heading("#0", text="ลำดับ")
         self.seq_tree.column("#0", width=55, anchor="center", stretch=False)
@@ -857,40 +949,42 @@ class AutoReceiveApp:
         self.refresh_seq_listbox()
         ToolTip(self.seq_tree, "ดับเบิลคลิกที่สเต็ปเพื่อแก้ไขค่า เช่น เวลาหน่วง โดยไม่ต้องลบแล้วเพิ่มใหม่")
 
-        ttk.Button(frm_seq.inner_frame, text="▲ ขึ้น", command=self.move_step_up).grid(row=9, column=0)
-        ttk.Button(frm_seq.inner_frame, text="▼ ลง", command=self.move_step_down).grid(row=9, column=1)
-        ttk.Button(frm_seq.inner_frame, text="ลบสเต็ปนี้", command=self.delete_step).grid(row=9, column=2)
-
+        step_controls = ttk.Frame(sequence_toolbar, style="Surface.TFrame")
+        step_controls.pack(side="left", fill="x", padx=(8, 0))
         self.new_step_type = tk.StringVar(value="KEY")
         ttk.OptionMenu(
-            frm_seq.inner_frame, self.new_step_type, "TYPE_BARCODE",
+            step_controls, self.new_step_type, "TYPE_BARCODE",
             "TYPE_BARCODE", "TYPE_WEIGHT", "KEY", "WAIT", "WAIT_FOR_TEXT", "CLICK",
             command=self.on_step_type_change,
-        ).grid(row=10, column=0, sticky="w", pady=(8, 0))
+        ).pack(side="left", padx=(0, 4))
 
         self.new_step_value = tk.StringVar(value="enter")
-        step_value_entry = ttk.Entry(frm_seq.inner_frame, textvariable=self.new_step_value, width=12)
-        step_value_entry.grid(row=10, column=1, pady=(8, 0))
+        step_value_entry = ttk.Entry(step_controls, textvariable=self.new_step_value, width=12)
+        step_value_entry.pack(side="left", padx=4)
         ToolTip(step_value_entry, "คีย์: ชื่อปุ่ม เช่น enter/tab | Wait: วินาที | รอข้อความ: timeout วินาที")
 
-        ttk.Button(frm_seq.inner_frame, text="+ เพิ่มสเต็ป", command=self.add_step).grid(row=10, column=3)
-        ttk.Button(
-            frm_seq.inner_frame, text="📍 จับตำแหน่งเมาส์ (นับ 3 วิ) → เพิ่มเป็นสเต็ปคลิก",
+        ttk.Button(step_controls, text="+ เพิ่มสเต็ป", command=self.add_step).pack(side="left", padx=4)
+        ttk.Separator(step_controls, orient="vertical").pack(side="left", fill="y", padx=6, pady=2)
+        ttk.Button(step_controls, text="▲ ขึ้น", command=self.move_step_up).pack(side="left", padx=3)
+        ttk.Button(step_controls, text="▼ ลง", command=self.move_step_down).pack(side="left", padx=3)
+        ttk.Button(step_controls, text="ลบสเต็ปนี้", command=self.delete_step).pack(side="left", padx=3)
+        capture_position_btn = ttk.Button(
+            sequence_toolbar, text="📍 จับตำแหน่งเมาส์",
             command=self.capture_click_position,
-        ).grid(row=11, column=0, columnspan=4, sticky="we", pady=(6, 4))
+        )
+        capture_position_btn.pack(side="right", padx=(5, 0))
+        ToolTip(capture_position_btn, "นับ 3 วินาทีแล้วจับตำแหน่งเมาส์เพื่อเพิ่มเป็นสเต็ปคลิก")
 
         frm_run = SectionDialog(self._real_root, "ตัวเลือกก่อนเริ่มทำงาน")
         self.section_dialogs.append(frm_run)
-        nav_btn4 = create_nav_button("🔧\nตัวเลือก", frm_run.show)
-        nav_btn4.pack(pady=3, fill="x")
+        nav_btn4 = create_nav_button("ตัวเลือก", frm_run.show)
+        nav_btn4.pack(side="left", padx=2, pady=2)
         self.nav_buttons["options"] = nav_btn4
 
-        self.dry_run_var = tk.BooleanVar(value=self.config_data.get("dry_run", False))
         cb_dry = ttk.Checkbutton(frm_run.inner_frame, text="Dry run", variable=self.dry_run_var)
         cb_dry.grid(row=0, column=0, sticky="w")
         ToolTip(cb_dry, "ทดสอบ แสดง log เฉยๆ ไม่พิมพ์/คลิกจริง")
 
-        self.only_qrcode_var = tk.BooleanVar(value=self.config_data.get("only_qrcode", True))
         cb_qr = ttk.Checkbutton(frm_run.inner_frame, text="เฉพาะ QR Code", variable=self.only_qrcode_var)
         cb_qr.grid(row=0, column=1, sticky="w")
         ToolTip(cb_qr, "เก็บเฉพาะ QR Code เท่านั้น ตัดบาร์โค้ดเส้นตรงแบบ 1D ทิ้ง")
@@ -904,7 +998,6 @@ class AutoReceiveApp:
         ToolTip(dpi_label, dpi_tip)
         ToolTip(dpi_entry, dpi_tip)
 
-        self.paste_method_var = tk.BooleanVar(value=self.config_data.get("paste_method", True))
         cb_paste = ttk.Checkbutton(frm_run.inner_frame, text="วางจากคลิปบอร์ด", variable=self.paste_method_var)
         cb_paste.grid(row=0, column=2, sticky="w")
         ToolTip(cb_paste, "วางข้อความจากคลิปบอร์ดแทนพิมพ์ทีละตัว (แนะนำ กันตัวอักษรตกหล่น)")
@@ -956,8 +1049,8 @@ class AutoReceiveApp:
         # ---------- 5) OCR: ตรวจจับข้อความบนจอ ----------
         frm_ocr = SectionDialog(self._real_root, "ตรวจจับข้อความบนจอ (OCR)")
         self.section_dialogs.append(frm_ocr)
-        nav_btn5 = create_nav_button("🔍\nOCR", frm_ocr.show)
-        nav_btn5.pack(pady=3, fill="x")
+        nav_btn5 = create_nav_button("OCR", frm_ocr.show)
+        nav_btn5.pack(side="left", padx=2, pady=2)
         self.nav_buttons["ocr"] = nav_btn5
 
         self.ocr_lang_var = tk.StringVar(value=self.config_data.get("ocr_lang", "tha+eng"))
@@ -1049,17 +1142,17 @@ class AutoReceiveApp:
         # ---------- 6) ตรวจสอบรายการที่ตกหลุด (ทำหลังกรอกครบทุกรายการแล้ว) ----------
         frm_verify = SectionDialog(self._real_root, "ตรวจสอบรายการที่ตกหลุด")
         self.section_dialogs.append(frm_verify)
-        nav_btn6 = create_nav_button("✅\nตรวจสอบ", frm_verify.show)
-        nav_btn6.pack(pady=3, fill="x")
+        nav_btn6 = create_nav_button("ตรวจสอบ", frm_verify.show)
+        nav_btn6.pack(side="left", padx=2, pady=2)
         self.nav_buttons["verify"] = nav_btn6
 
-        ttk.Separator(nav_frame, orient="horizontal").pack(fill="x", pady=6)
-        nav_btn_codes = create_nav_button("📋\nรายการบาร์โค้ด", self.show_codes_window)
-        nav_btn_codes.pack(pady=3, fill="x")
+        ttk.Separator(nav_frame, orient="vertical").pack(side="left", fill="y", padx=4, pady=3)
+        nav_btn_codes = create_nav_button("รายการบาร์โค้ด", self.show_codes_window)
+        nav_btn_codes.pack(side="left", padx=2, pady=2)
         self.nav_buttons["codes"] = nav_btn_codes
 
-        nav_btn_shortcuts = create_nav_button("⌨️\nปุ่มลัด", self.open_shortcuts_window)
-        nav_btn_shortcuts.pack(pady=3, fill="x")
+        nav_btn_shortcuts = create_nav_button("ปุ่มลัด", self.open_shortcuts_window)
+        nav_btn_shortcuts.pack(side="left", padx=2, pady=2)
         self.nav_buttons["shortcuts"] = nav_btn_shortcuts
 
         self.verify_region_var = tk.StringVar(value=self._region_to_str(self.verify_region))
@@ -1133,32 +1226,42 @@ class AutoReceiveApp:
             frm_verify.inner_frame, text="🔍 ตรวจสอบรายการที่ตกหลุด", command=self.check_missing_codes
         ).grid(row=4, column=0, columnspan=4, sticky="we", pady=(6, 4))
 
-        frm_log = CollapsibleFrame(main_area, title="Log")
-        frm_log.pack(fill="both", expand=True, **pad)
+        logs_frame = ttk.Frame(main_area)
+        logs_frame.pack(fill="both", expand=True)
+
+        frm_log = CollapsibleFrame(logs_frame, title="Log")
+        frm_log.pack(side="left", fill="both", expand=True, padx=(0, 4), pady=4)
         self.collapsible_frames.append(frm_log)
-        log_frame = ttk.Frame(frm_log.inner_frame)
+        log_frame = ttk.Frame(frm_log.inner_frame, style="Surface.TFrame")
         log_frame.pack(fill="both", expand=True)
         log_scrollbar = ttk.Scrollbar(log_frame, orient="vertical")
         log_scrollbar.pack(side="right", fill="y")
         self.log_text = tk.Text(
-            log_frame, height=10, wrap="none", yscrollcommand=log_scrollbar.set
+            log_frame, height=10, wrap="none", yscrollcommand=log_scrollbar.set,
+            relief="flat", borderwidth=0, padx=9, pady=5,
+            font=("Consolas", 9),
         )
         self.log_text.pack(side="left", fill="both", expand=True)
         log_scrollbar.config(command=self.log_text.yview)
+        ttk.Button(
+            frm_log.header, text="ล้าง", command=lambda: self.log_text.delete("1.0", tk.END)
+        ).pack(side="right", padx=6, pady=2)
 
         frm_fail_log = CollapsibleFrame(
-            main_area, title="Log ผิดเงื่อนไข (OCR หาไม่เจอ)",
+            logs_frame, title="Log ผิดเงื่อนไข (OCR หาไม่เจอ)",
             tooltip="แยกเก็บเฉพาะรายการที่สเต็ป 'รอข้อความ (OCR)' หาไม่เจอภายในเวลาที่กำหนด "
                     "พร้อมรายการถัดไปอีก 1 รายการ ไว้ตรวจสอบย้อนหลังโดยไม่ต้องไล่หาใน Log หลัก",
         )
-        frm_fail_log.pack(fill="both", expand=False, **pad)
+        frm_fail_log.pack(side="left", fill="both", expand=True, padx=(4, 0), pady=4)
         self.collapsible_frames.append(frm_fail_log)
-        fail_log_frame = ttk.Frame(frm_fail_log.inner_frame)
+        fail_log_frame = ttk.Frame(frm_fail_log.inner_frame, style="Surface.TFrame")
         fail_log_frame.pack(fill="both", expand=True)
         fail_log_scrollbar = ttk.Scrollbar(fail_log_frame, orient="vertical")
         fail_log_scrollbar.pack(side="right", fill="y")
         self.fail_log_text = tk.Text(
-            fail_log_frame, height=6, wrap="none", yscrollcommand=fail_log_scrollbar.set, foreground="#b91c1c"
+            fail_log_frame, height=10, wrap="none", yscrollcommand=fail_log_scrollbar.set,
+            foreground="#b91c1c", relief="flat", borderwidth=0, padx=9, pady=5,
+            font=("Consolas", 9),
         )
         self.fail_log_text.pack(side="left", fill="both", expand=True)
         fail_log_scrollbar.config(command=self.fail_log_text.yview)
@@ -1170,11 +1273,9 @@ class AutoReceiveApp:
             self._update_stats_label()
 
         ttk.Button(
-            frm_fail_log.inner_frame, text="🗑️ ล้าง log นี้",
-            command=_clear_fail_log,
-        ).pack(anchor="e", pady=(4, 0))
+            frm_fail_log.header, text="ล้าง", command=_clear_fail_log
+        ).pack(side="right", padx=6, pady=2)
 
-        self.refresh_windows()
         self.apply_theme()
 
     # ---------- ธีมสี (โหมดมืด/สว่าง) ----------
@@ -1187,25 +1288,71 @@ class AutoReceiveApp:
             style.theme_use("clam")
         except tk.TclError:
             pass
-        style.configure(".", background=palette["bg"], foreground=palette["fg"])
+        available_fonts = set(tkfont.families(self._real_root))
+        font_family = next(
+            (
+                name for name in ("SF Pro Text", "Leelawadee UI", "Segoe UI")
+                if name in available_fonts
+            ),
+            "TkDefaultFont",
+        )
+        style.configure(".", background=palette["bg"], foreground=palette["fg"], font=(font_family, 9))
         style.configure("TFrame", background=palette["bg"])
+        style.configure(
+            "Toolbar.TFrame", background=palette["surface_bg"], relief="flat"
+        )
+        style.configure(
+            "Card.TFrame",
+            background=palette["surface_bg"],
+            borderwidth=1,
+            relief="solid",
+            bordercolor=palette["line"],
+        )
+        style.configure("Surface.TFrame", background=palette["surface_bg"])
         style.configure("TLabelframe", background=palette["bg"], foreground=palette["fg"])
         style.configure("TLabelframe.Label", background=palette["bg"], foreground=palette["fg"])
         style.configure("TLabel", background=palette["bg"], foreground=palette["fg"])
-        style.configure("TButton", background=palette["header_bg"], foreground=palette["fg"])
-        style.map("TButton", background=[("active", palette["select_bg"])])
+        style.configure("Brand.TLabel", background=palette["surface_bg"], foreground=palette["button_primary"], font=(font_family, 15, "bold"))
+        style.configure("PageTitle.TLabel", background=palette["bg"], foreground=palette["fg"], font=(font_family, 19, "bold"))
+        style.configure("CardTitle.TLabel", background=palette["surface_bg"], foreground=palette["fg"], font=(font_family, 10, "bold"))
+        style.configure("Muted.TLabel", background=palette["bg"], foreground=palette["muted"])
+        style.configure("CardMuted.TLabel", background=palette["surface_bg"], foreground=palette["muted"])
+        style.configure("ToolbarMuted.TLabel", background=palette["surface_bg"], foreground=palette["muted"])
+        style.configure("Stats.TLabel", background=palette["surface_bg"], foreground=palette["muted"], font=(font_family, 9))
+        style.configure("TButton", background=palette["header_bg"], foreground=palette["fg"], padding=(9, 5))
+        style.map(
+            "TButton",
+            background=[("disabled", palette["header_bg"]), ("active", palette["select_bg"])],
+            foreground=[("disabled", palette["fg"]), ("active", palette["fg"])],
+        )
+        style.configure("Accent.TButton", background=palette["button_primary"], foreground="#ffffff", padding=(11, 6), font=(font_family, 9, "bold"))
+        style.map("Accent.TButton", background=[("active", palette["button_primary"])], foreground=[("active", "#ffffff")])
+        style.configure("Danger.TButton", background=palette["button_danger"], foreground=palette["fail_fg"], padding=(9, 5))
+        style.map("Danger.TButton", background=[("active", palette["button_danger"])])
+        style.configure("Success.TButton", background=palette["button_success"], foreground=palette["fg"], padding=(9, 5))
+        style.map("Success.TButton", background=[("active", palette["button_success"])])
         style.configure("TCheckbutton", background=palette["bg"], foreground=palette["fg"])
         style.map("TCheckbutton", background=[("active", palette["bg"])])
+        style.configure("Card.TCheckbutton", background=palette["surface_bg"], foreground=palette["fg"])
+        style.map("Card.TCheckbutton", background=[("active", palette["surface_bg"])])
         style.configure("TEntry", fieldbackground=palette["entry_bg"], foreground=palette["fg"])
         style.configure("TCombobox", fieldbackground=palette["entry_bg"], foreground=palette["fg"])
-        style.map("TCombobox", fieldbackground=[("readonly", palette["entry_bg"])])
+        style.map(
+            "TCombobox",
+            fieldbackground=[("readonly", palette["entry_bg"])],
+            foreground=[("readonly", palette["fg"])],
+        )
         style.configure("TSeparator", background=palette["bg"])
         style.configure(
             "Treeview", background=palette["tree_bg"], fieldbackground=palette["tree_bg"],
-            foreground=palette["tree_fg"],
+            foreground=palette["tree_fg"], rowheight=24, font=(font_family, 9),
         )
         style.map("Treeview", background=[("selected", palette["select_bg"])])
-        style.configure("Treeview.Heading", background=palette["header_bg"], foreground=palette["header_fg"])
+        style.configure(
+            "Treeview.Heading", background=palette["header_bg"], foreground=palette["header_fg"],
+            font=(font_family, 9, "bold"), padding=(8, 5),
+        )
+        style.map("Treeview.Heading", background=[("active", palette["select_bg"])])
         style.configure("TScrollbar", background=palette["header_bg"])
         style.configure("TNotebook", background=palette["bg"])
 
@@ -1216,12 +1363,29 @@ class AutoReceiveApp:
             self._real_root.configure(bg=palette["bg"])
         except tk.TclError:
             pass
-        if hasattr(self, "canvas"):
-            self.canvas.configure(bg=palette["bg"])
+        if hasattr(self, "drop_frame"):
+            self.drop_frame.configure(bg=palette["drop_bg"], highlightbackground=palette["select_bg"])
+            self.drop_label.configure(bg=palette["drop_bg"], fg=palette["drop_fg"])
+            self.browse_btn_frame.configure(bg=palette["drop_bg"])
+        if hasattr(self, "action_bar"):
+            self.action_bar.configure(style="Card.TFrame")
+        for card in (
+            getattr(self, "settings_card", None),
+            getattr(self, "sequence_card", None),
+        ):
+            if card is not None:
+                card.configure(style="Card.TFrame")
         for btn in self.nav_buttons.values():
             btn.configure(
-                bg=palette["header_bg"], fg=palette["fg"],
-                activebackground=palette["select_bg"], activeforeground=palette["fg"],
+                bg=palette["surface_bg"], fg=palette["muted"],
+                activebackground=palette["nav_active"], activeforeground=palette["button_primary"],
+                font=("", 9, "bold"),
+            )
+        if hasattr(self, "home_nav_label"):
+            self.home_nav_label.configure(
+                bg=palette["nav_active"],
+                fg=palette["button_primary"],
+                highlightthickness=0,
             )
         if hasattr(self, "log_text"):
             self.log_text.configure(bg=palette["log_bg"], fg=palette["log_fg"], insertbackground=palette["fg"])
@@ -1229,10 +1393,6 @@ class AutoReceiveApp:
             self.fail_log_text.configure(bg=palette["log_bg"], fg=palette["fail_fg"], insertbackground=palette["fg"])
         if hasattr(self, "rules_listbox"):
             self.rules_listbox.configure(bg=palette["entry_bg"], fg=palette["fg"])
-        if hasattr(self, "drop_frame"):
-            self.drop_frame.configure(bg=palette["entry_bg"])
-            self.drop_label.configure(bg=palette["entry_bg"], fg=palette["fg"])
-            self.browse_btn_frame.configure(bg=palette["entry_bg"])
         for cf in self.collapsible_frames:
             cf.apply_theme(palette)
         for sd in self.section_dialogs:
@@ -1243,6 +1403,7 @@ class AutoReceiveApp:
     def toggle_theme(self):
         self.dark_mode = not self.dark_mode
         self.apply_theme()
+        self.save_config_to_disk()
 
     # ---------- updates ----------
     @staticmethod
@@ -1432,13 +1593,6 @@ class AutoReceiveApp:
         path = filedialog.askopenfilename(filetypes=[("tesseract.exe", "tesseract.exe"), ("All files", "*.*")])
         if path:
             self.tesseract_path_var.set(path)
-
-    def refresh_windows(self):
-        try:
-            titles = [t for t in gw.getAllTitles() if t.strip()]
-        except Exception:
-            titles = []
-        self.window_combo["values"] = titles
 
     # ---------- ลำดับการทำงาน (sequence) ----------
     def refresh_sequence_profiles(self):
@@ -1705,7 +1859,11 @@ class AutoReceiveApp:
         for binding in self._shortcut_bindings:
             self._real_root.unbind_all(binding)
         self._shortcut_bindings = []
-        callbacks = {"start": self.start_automation, "stop": self.stop_automation}
+        callbacks = {
+            "start": self.start_automation,
+            "stop": self.stop_automation,
+            "resume": self.resume_automation,
+        }
         for action, callback in callbacks.items():
             sequence = self._shortcut_sequence(self.shortcuts.get(action, ""))
             if sequence:
@@ -1723,11 +1881,13 @@ class AutoReceiveApp:
         win.resizable(False, False)
         frame = ttk.Frame(win, padding=12)
         frame.pack(fill="both", expand=True)
-        ttk.Label(frame, text="กำหนดปุ่มลัดสำหรับเริ่มและหยุดการทำงาน").grid(
+        ttk.Label(frame, text="กำหนดปุ่มลัดสำหรับเริ่ม หยุด และดำเนินการต่อ").grid(
             row=0, column=0, columnspan=3, sticky="w", pady=(0, 10)
         )
         entries = {}
-        for row, (action, label) in enumerate((("start", "เริ่มทำงาน:"), ("stop", "หยุดทำงาน:")), 1):
+        for row, (action, label) in enumerate(
+            (("start", "เริ่มทำงาน:"), ("stop", "หยุดทำงาน:"), ("resume", "ดำเนินการต่อ:")), 1
+        ):
             ttk.Label(frame, text=label).grid(row=row, column=0, sticky="w", padx=(0, 8), pady=4)
             value = tk.StringVar(value=self.shortcuts.get(action, ""))
             entries[action] = value
@@ -1741,7 +1901,7 @@ class AutoReceiveApp:
 
         ttk.Label(
             frame, text="ตัวอย่าง: F6, Ctrl+F6, Ctrl+Shift+S (เว้นว่างเพื่อปิดปุ่มลัด)"
-        ).grid(row=3, column=0, columnspan=3, sticky="w", pady=(6, 10))
+        ).grid(row=4, column=0, columnspan=3, sticky="w", pady=(6, 10))
 
         def save():
             new_shortcuts = {action: value.get().strip() for action, value in entries.items()}
@@ -1756,7 +1916,7 @@ class AutoReceiveApp:
             self.log("บันทึกการตั้งค่าปุ่มลัดแล้ว")
 
         buttons = ttk.Frame(frame)
-        buttons.grid(row=4, column=0, columnspan=3, sticky="e")
+        buttons.grid(row=5, column=0, columnspan=3, sticky="e")
         ttk.Button(buttons, text="บันทึก", command=save).pack(side="left", padx=3)
         ttk.Button(buttons, text="ยกเลิก", command=win.destroy).pack(side="left", padx=3)
 
@@ -2125,6 +2285,23 @@ class AutoReceiveApp:
         def copy_list():
             try:
                 self.copy_text_to_clipboard("\n".join(missing))
+                if len(self.extracted_code_pages) == len(self.extracted_codes):
+                    page_by_code = {
+                        " ".join(str(code).split()).casefold(): page_number
+                        for code, page_number in zip(self.extracted_codes, self.extracted_code_pages)
+                    }
+                    selected_pages = [
+                        page_by_code.get(" ".join(str(code).split()).casefold())
+                        for code in missing
+                    ]
+                    if all(page_number is not None for page_number in selected_pages):
+                        self.extracted_code_pages = selected_pages
+                    else:
+                        self.extracted_code_pages = []
+                        self.pdf_page_count = 0
+                else:
+                    self.extracted_code_pages = []
+                    self.pdf_page_count = 0
                 self.extracted_codes = list(missing)
                 self.save_codes_cache()
                 self.update_codes_count_label()
@@ -2312,7 +2489,9 @@ class AutoReceiveApp:
 
         def worker():
             try:
-                codes = extract_barcodes(pdf_path, poppler_path, only_qrcode, dpi)
+                codes, page_numbers, total_pages = extract_barcodes_with_pages(
+                    pdf_path, poppler_path, only_qrcode, dpi
+                )
             except Exception as e:
                 self.root.after(0, lambda: messagebox.showerror("อ่าน PDF ไม่สำเร็จ", str(e)))
                 self.log(f"❌ อ่าน PDF ไม่สำเร็จ: {e}")
@@ -2327,6 +2506,9 @@ class AutoReceiveApp:
             more = f"\n... และอีก {len(codes)-30} รายการ" if len(codes) > 30 else ""
             self.log(f"อ่านสำเร็จ พบบาร์โค้ดทั้งหมด {len(codes)} รายการ")
             self.extracted_codes = codes
+            self.extracted_code_pages = page_numbers
+            self.pdf_page_count = total_pages
+            self.extracted_codes_pdf_path = pdf_path
             self.save_codes_cache()
             self.root.after(0, self.update_codes_count_label)
             self.root.after(
@@ -2359,7 +2541,7 @@ class AutoReceiveApp:
         try:
             while True:
                 msg, misfire_key = self.fail_log_queue.get_nowait()
-                self.fail_log_text.insert(tk.END, msg + "\n")
+                self._insert_copyable_fail_log(msg)
                 self.fail_log_text.see(tk.END)
                 if misfire_key:
                     self._misfire_keys.add(misfire_key)
@@ -2371,15 +2553,67 @@ class AutoReceiveApp:
             self._update_stats_label()
         self.root.after(150, self.poll_log_queue)
 
+    def _insert_copyable_fail_log(self, msg):
+        match = re.search(r"(รายการที่\s+)(\d+)(\s+\()([^)]*)(\))", msg)
+        if not match:
+            self.fail_log_text.insert(tk.END, msg + "\n")
+            return
+
+        self.fail_log_text.insert(tk.END, msg[:match.start()])
+        for text, copy_value in (
+            (match.group(1), None),
+            (match.group(2), match.group(2)),
+            (match.group(3), None),
+            (match.group(4), match.group(4)),
+            (match.group(5), None),
+            (msg[match.end():], None),
+        ):
+            if not text:
+                continue
+            if copy_value is None:
+                self.fail_log_text.insert(tk.END, text)
+                continue
+            self._copy_tag_counter += 1
+            tag = f"copy_log_value_{self._copy_tag_counter}"
+            self.fail_log_text.insert(tk.END, text, tag)
+            self.fail_log_text.tag_configure(tag, underline=True, foreground="#2563eb")
+            self.fail_log_text.tag_bind(
+                tag, "<Button-1>", lambda _event, value=copy_value: self._copy_log_value(value)
+            )
+            self.fail_log_text.tag_bind(tag, "<Enter>", lambda _event: self.fail_log_text.configure(cursor="hand2"))
+            self.fail_log_text.tag_bind(tag, "<Leave>", lambda _event: self.fail_log_text.configure(cursor=""))
+        self.fail_log_text.insert(tk.END, "\n")
+
+    def _copy_log_value(self, value):
+        try:
+            self.copy_text_to_clipboard(value)
+            self.log(f"คัดลอกแล้ว: {value}")
+        except Exception as e:
+            messagebox.showerror("คัดลอกไม่สำเร็จ", str(e), parent=self._real_root)
+
     # ---------- automation ----------
     def start_automation(self):
         if self.worker_thread and self.worker_thread.is_alive():
             messagebox.showinfo("กำลังทำงานอยู่", "โปรแกรมกำลังรันอยู่แล้ว")
             return
 
-        if self.extracted_codes and not self.force_refresh_var.get():
+        pages_match_cached_codes = (
+            len(self.extracted_code_pages) == len(self.extracted_codes)
+            and self.pdf_page_count > 0
+            and os.path.normcase(os.path.abspath(self.extracted_codes_pdf_path))
+            == os.path.normcase(os.path.abspath(self.pdf_path_var.get().strip()))
+        )
+        if (
+            self.extracted_codes
+            and not self.force_refresh_var.get()
+            and (not self.reverse_order_var.get() or pages_match_cached_codes)
+        ):
             self.log(f"ใช้ข้อมูลบาร์โค้ดที่เคยดึงไว้ก่อนหน้า ({len(self.extracted_codes)} รายการ) ไม่ดึงใหม่")
-            self._confirm_and_run(list(self.extracted_codes))
+            self._confirm_and_run(
+                list(self.extracted_codes),
+                list(self.extracted_code_pages),
+                self.pdf_page_count,
+            )
             return
 
         pdf_path = self.pdf_path_var.get().strip()
@@ -2397,7 +2631,9 @@ class AutoReceiveApp:
 
         def extraction_worker():
             try:
-                codes = extract_barcodes(pdf_path, poppler_path, only_qrcode, dpi)
+                codes, page_numbers, total_pages = extract_barcodes_with_pages(
+                    pdf_path, poppler_path, only_qrcode, dpi
+                )
             except Exception as e:
                 self.log(f"❌ อ่าน PDF ไม่สำเร็จ: {e}")
                 self.root.after(0, lambda: messagebox.showerror("อ่าน PDF ไม่สำเร็จ", str(e)))
@@ -2410,16 +2646,23 @@ class AutoReceiveApp:
                 )
                 return
             self.extracted_codes = codes
+            self.extracted_code_pages = page_numbers
+            self.pdf_page_count = total_pages
+            self.extracted_codes_pdf_path = pdf_path
             self.save_codes_cache()
             self.root.after(0, self.update_codes_count_label)
-            self.root.after(0, lambda: self._confirm_and_run(codes))
+            self.root.after(
+                0, lambda: self._confirm_and_run(codes, page_numbers, total_pages)
+            )
 
         self.worker_thread = threading.Thread(target=extraction_worker, daemon=True)
         self.worker_thread.start()
 
-    def _confirm_and_run(self, codes):
+    def _confirm_and_run(self, codes, page_numbers=None, total_pages=0):
+        page_numbers = list(page_numbers or [])
         if self.reverse_order_var.get():
             codes = list(reversed(codes))
+            page_numbers = list(reversed(page_numbers))
         total = len(codes)
         try:
             start_index = int(self.start_index_var.get().strip() or 1)
@@ -2430,6 +2673,7 @@ class AutoReceiveApp:
             messagebox.showerror("ผิดพลาด", f"'เริ่มจากรายการที่' ต้องอยู่ระหว่าง 1 ถึง {total}")
             return
         run_codes = codes[start_index - 1:]
+        run_page_numbers = page_numbers[start_index - 1:] if len(page_numbers) == total else []
 
         dry_run = self.dry_run_var.get()
         if not dry_run:
@@ -2451,7 +2695,9 @@ class AutoReceiveApp:
         self._reset_stats()
         self.stop_event.clear()
         self.worker_thread = threading.Thread(
-            target=self.run_automation, args=(config, run_codes, dry_run, total, start_index), daemon=True
+            target=self.run_automation,
+            args=(config, run_codes, dry_run, total, start_index, run_page_numbers, total_pages),
+            daemon=True,
         )
         self.worker_thread.start()
 
@@ -2461,7 +2707,8 @@ class AutoReceiveApp:
         self.log("สั่งหยุด... จะหยุดหลังจบสเต็ปปัจจุบัน")
 
     def resume_automation(self):
-        self.resume_event.set()
+        if self.waiting_for_resume:
+            self.resume_event.set()
 
     def force_english_keyboard_layout(self):
         """สลับภาษาแป้นพิมพ์ของหน้าต่างที่โฟกัสอยู่เป็นอังกฤษ (US) ก่อนพิมพ์/วาง
@@ -2571,18 +2818,24 @@ class AutoReceiveApp:
         self.stats[kind] += 1
         self.root.after(0, self._update_stats_label)
         self.resume_event.clear()
-        self.root.after(0, lambda: self.resume_btn.config(state="normal"))
         self.log(
             f"⏸ พบข้อความ '{keyword}' ({kind}) ระบบหยุดรอ — "
             "แก้ไขหน้าจอปลายทางแล้วกด 'ดำเนินการต่อ' เพื่อกรอกซ้ำ"
         )
-        while not self.resume_event.is_set():
-            if self.stop_event.is_set():
-                return False
-            time.sleep(0.2)
-        self.root.after(0, lambda: self.resume_btn.config(state="disabled"))
+        if not self._wait_for_resume():
+            return False
         self.log("▶ ดำเนินการต่อและกรอกข้อมูลเดิมซ้ำ")
         return True
+
+    def _wait_for_resume(self):
+        self.waiting_for_resume = True
+        self.root.after(0, lambda: self.resume_btn.config(state="normal"))
+        while not self.resume_event.wait(0.2):
+            if self.stop_event.is_set():
+                break
+        self.waiting_for_resume = False
+        self.root.after(0, lambda: self.resume_btn.config(state="disabled"))
+        return not self.stop_event.is_set()
 
     def execute_rule_action(self, rule, config, dry_run):
         action = rule.get("action")
@@ -2605,17 +2858,16 @@ class AutoReceiveApp:
                 "แล้วกดปุ่ม '▶ ดำเนินการต่อ (หลังหยุดรอ)' ในโปรแกรมนี้เพื่อไปต่อ"
             )
             self.resume_event.clear()
-            self.root.after(0, lambda: self.resume_btn.config(state="normal"))
-            while not self.resume_event.is_set():
-                if self.stop_event.is_set():
-                    return
-                time.sleep(0.2)
-            self.root.after(0, lambda: self.resume_btn.config(state="disabled"))
+            if not self._wait_for_resume():
+                return
             self.log("  ▶ ดำเนินการต่อแล้ว")
 
-    def run_automation(self, config, codes, dry_run, total_count=None, start_index=1):
+    def run_automation(
+        self, config, codes, dry_run, total_count=None, start_index=1, page_numbers=None, total_pages=0
+    ):
         try:
             total_count = total_count or len(codes)
+            page_numbers = page_numbers or []
             if start_index > 1:
                 self.log(
                     f"เริ่มจากรายการที่ {start_index} จากทั้งหมด {total_count} รายการ "
@@ -2631,36 +2883,23 @@ class AutoReceiveApp:
                 self.log(f"เริ่มใน {i} วินาที... สลับไปโฟกัสโปรแกรมเป้าหมายตอนนี้")
                 time.sleep(1)
 
-            title = config.get("target_window_title", "").strip()
-            if title and not dry_run:
-                wins = gw.getWindowsWithTitle(title)
-                if wins:
-                    win = wins[0]
-                    try:
-                        win.activate()
-                        time.sleep(0.3)
-                    except Exception as e:
-                        self.log(f"เตือน: โฟกัสหน้าต่างไม่สำเร็จ ({e}) กรุณาคลิกโฟกัสเอง")
-                    # Windows มักบล็อกการ activate() แบบเงียบๆ ไม่ error แต่โฟกัสไม่ติดจริง
-                    # เสริมด้วยการคลิกเมาส์จริงที่แถบหัวหน้าต่าง (Windows ไม่บล็อกการคลิกจริง)
-                    try:
-                        click_x = win.left + max(20, win.width // 2)
-                        click_y = win.top + 10
-                        pyautogui.click(click_x, click_y)
-                        time.sleep(0.3)
-                    except Exception:
-                        pass
-                else:
-                    self.log(f"เตือน: ไม่พบหน้าต่างชื่อ '{title}' กรุณาคลิกโฟกัสโปรแกรมเป้าหมายเอง")
-
             for offset, code in enumerate(codes):
                 idx = start_index + offset  # ลำดับจริงเทียบกับไฟล์ทั้งหมด ไม่ใช่แค่ในชุดที่เหลือ
+                page_number = page_numbers[offset] if offset < len(page_numbers) else None
+                page_log_suffix = (
+                    f" — หน้า PDF {page_number}/{total_pages}"
+                    if config.get("reverse_order") and page_number and total_pages
+                    else ""
+                )
                 retries = 0
                 while True:
                     if self.stop_event.is_set():
                         self.log("หยุดโดยผู้ใช้")
                         return
-                    self.log(f"[{idx}/{total_count}] บาร์โค้ด: {code}" + (f" (ครั้งที่ {retries + 1})" if retries else ""))
+                    self.log(
+                        f"[{idx}/{total_count}]{page_log_suffix} บาร์โค้ด: {code}"
+                        + (f" (ครั้งที่ {retries + 1})" if retries else "")
+                    )
                     for step in config["sequence"]:
                         if self.stop_event.is_set():
                             return
@@ -2692,12 +2931,15 @@ class AutoReceiveApp:
                             matched = self.wait_for_ocr_match(config, timeout, step_keywords)
                             if matched is None:
                                 self.log("  ไม่พบข้อความที่ตรงเงื่อนไข ข้ามไปขั้นตอนถัดไป")
-                                self.log_fail(f"รายการที่ {idx} ({code}) — ไม่ตรงตามเงื่อนไข (OCR หาไม่เจอ)")
+                                self.log_fail(
+                                    f"รายการที่ {idx} ({code}){page_log_suffix} — ไม่ตรงตามเงื่อนไข (OCR หาไม่เจอ)"
+                                )
                                 if offset + 1 < len(codes):
                                     next_idx = idx + 1
                                     next_code = codes[offset + 1]
                                     self.log_fail(
-                                        f"รายการที่ {next_idx} ({next_code}) — ถัดจากรายการที่ไม่ตรงเงื่อนไข (เก็บไว้ตรวจสอบ)"
+                                        f"รายการที่ {next_idx} ({next_code}){page_log_suffix} — "
+                                        "ถัดจากรายการที่ไม่ตรงเงื่อนไข (เก็บไว้ตรวจสอบ)"
                                     )
                             else:
                                 self.log(f"  พบคำว่า '{matched.get('keyword')}' -> ดำเนินการ: {matched.get('action')}")
@@ -2723,15 +2965,12 @@ class AutoReceiveApp:
                 if batch_size > 0 and idx % batch_size == 0 and idx != total_count:
                     self.log(
                         f"⏸ ครบ {batch_size} รอบแล้ว หยุดพักกันระบบเป้าหมายขัดข้อง — "
-                        "เตรียม/รีสตาร์ทโปรแกรมเป้าหมายให้พร้อม แล้วกด '▶ ดำเนินการต่อ (หลังหยุดรอ)'"
+                        "เตรียม/รีสตาร์ทโปรแกรมให้พร้อม แล้วกด '▶ ดำเนินการต่อ'"
                     )
+                    self.root.after(0, self.root.bell)
                     self.resume_event.clear()
-                    self.root.after(0, lambda: self.resume_btn.config(state="normal"))
-                    while not self.resume_event.is_set():
-                        if self.stop_event.is_set():
-                            return
-                        time.sleep(0.2)
-                    self.root.after(0, lambda: self.resume_btn.config(state="disabled"))
+                    if not self._wait_for_resume():
+                        return
                     self.log("▶ ดำเนินการต่อแล้ว")
             self.log("✅ เสร็จสิ้นทุกรายการ")
         except pyautogui.FailSafeException:
@@ -2739,13 +2978,355 @@ class AutoReceiveApp:
         except Exception as e:
             self.log(f"❌ เกิดข้อผิดพลาด: {e}")
 
+class WebUiBridge:
+    def __init__(self, root, app):
+        self._root = root
+        self._app = app
+        self._window = None
+
+    def _on_tk(self, callback, timeout=30):
+        completed = threading.Event()
+        result = []
+
+        def run():
+            try:
+                result.append((True, callback()))
+            except Exception as error:
+                result.append((False, error))
+            finally:
+                completed.set()
+
+        self._root.after(0, run)
+        if not completed.wait(timeout):
+            raise TimeoutError("หน้าต่างโปรแกรมไม่ตอบสนอง")
+        succeeded, value = result[0]
+        if not succeeded:
+            raise value
+        return value
+
+    def get_state(self):
+        def read_state():
+            app = self._app
+            running = bool(app.worker_thread and app.worker_thread.is_alive())
+            status = "กำลังพัก รอดำเนินการต่อ" if app.waiting_for_resume else (
+                "กำลังทำงาน" if running else "พร้อมทำงาน"
+            )
+            selected = app._selected_step_index()
+            return {
+                "pdfPath": app.pdf_path_var.get(),
+                "pdfName": os.path.basename(app.pdf_path_var.get()) if app.pdf_path_var.get() else "",
+                "codeCount": len(app.extracted_codes),
+                "pageCount": app.pdf_page_count,
+                "weight": app.weight_var.get(),
+                "startDelay": app.delay_var.get(),
+                "startIndex": app.start_index_var.get(),
+                "batchSize": app.batch_size_var.get(),
+                "onlyQr": app.only_qrcode_var.get(),
+                "reverseOrder": app.reverse_order_var.get(),
+                "dryRun": app.dry_run_var.get(),
+                "pasteMethod": app.paste_method_var.get(),
+                "darkMode": app.dark_mode,
+                "status": status,
+                "running": running,
+                "waiting": app.waiting_for_resume,
+                "completed": app.stats.get("completed", 0),
+                "misfires": app.stats.get("misfire", 0),
+                "mainLog": app.log_text.get("1.0", tk.END).splitlines()[-30:],
+                "errorLog": app.fail_log_text.get("1.0", tk.END).splitlines()[-30:],
+                "sequence": [
+                    {
+                        "type": step.get("type", ""),
+                        "action": step_to_columns(step)[0],
+                        "detail": step_to_columns(step)[1],
+                    }
+                    for step in app.sequence
+                ],
+                "selectedStep": selected,
+                "profiles": sorted(app.sequence_profiles),
+                "profile": app.sequence_profile_var.get(),
+                "shortcuts": app.shortcuts,
+            }
+
+        return self._on_tk(read_state)
+
+    def update_settings(self, values):
+        def apply():
+            app = self._app
+            field_vars = {
+                "weight": app.weight_var,
+                "startDelay": app.delay_var,
+                "startIndex": app.start_index_var,
+                "batchSize": app.batch_size_var,
+            }
+            for key, variable in field_vars.items():
+                if key in values:
+                    variable.set(str(values[key]))
+            checkbox_vars = {
+                "onlyQr": app.only_qrcode_var,
+                "reverseOrder": app.reverse_order_var,
+                "dryRun": app.dry_run_var,
+                "pasteMethod": app.paste_method_var,
+            }
+            for key, variable in checkbox_vars.items():
+                if key in values:
+                    variable.set(bool(values[key]))
+            return True
+
+        return self._on_tk(apply)
+
+    def choose_pdf(self):
+        def choose():
+            self._app.browse_pdf()
+            return self._app.pdf_path_var.get()
+
+        return self._on_tk(choose)
+
+    def set_pdf_path(self, path):
+        def set_path():
+            path = os.path.abspath(str(path).strip())
+            if not path.lower().endswith(".pdf") or not os.path.isfile(path):
+                raise ValueError("กรุณาเลือกไฟล์ PDF ที่มีอยู่จริง")
+            self._app.pdf_path_var.set(path)
+            self._app.drop_label_var.set(f"✓  {os.path.basename(path)}")
+            self._app.log(f"เลือกไฟล์ PDF: {path}")
+            return path
+
+        return self._on_tk(set_path)
+
+    def start_run(self, values):
+        self.update_settings(values)
+        return self._on_tk(self._app.start_automation)
+
+    def stop_run(self):
+        return self._on_tk(self._app.stop_automation)
+
+    def resume_run(self):
+        return self._on_tk(self._app.resume_automation)
+
+    def save_config(self, values):
+        self.update_settings(values)
+        return self._on_tk(self._app.save_config_to_disk)
+
+    def toggle_theme(self):
+        self._on_tk(self._app.toggle_theme)
+        return self.get_state()
+
+    def rescan_pdf(self):
+        return self._on_tk(self._app.preview_barcodes)
+
+    def clear_log(self, failed=False):
+        def clear():
+            if failed:
+                self._app.fail_log_text.delete("1.0", tk.END)
+                self._app._misfire_keys.clear()
+                self._app.stats["misfire"] = 0
+                self._app._update_stats_label()
+            else:
+                self._app.log_text.delete("1.0", tk.END)
+
+        return self._on_tk(clear)
+
+    def select_step(self, index):
+        def select():
+            index = int(index)
+            if index < 0 or index >= len(self._app.sequence):
+                raise ValueError("ไม่พบสเต็ปที่เลือก")
+            self._app.seq_tree.selection_set(str(index))
+            self._app.seq_tree.focus(str(index))
+            return True
+
+        return self._on_tk(select)
+
+    def sequence_action(self, action, step_type="", value="", index=-1):
+        def perform():
+            app = self._app
+            if index >= 0:
+                if index >= len(app.sequence):
+                    raise ValueError("ไม่พบสเต็ปที่เลือก")
+                app.seq_tree.selection_set(str(index))
+                app.seq_tree.focus(str(index))
+            if action == "add":
+                app.new_step_type.set(step_type)
+                app.new_step_value.set(value)
+                if step_type == "CLICK":
+                    app.capture_click_position()
+                else:
+                    app.add_step()
+            elif action == "up":
+                app.move_step_up()
+            elif action == "down":
+                app.move_step_down()
+            elif action == "delete":
+                app.delete_step()
+            elif action == "edit":
+                app.edit_step()
+            else:
+                raise ValueError(f"ไม่รู้จักการกระทำของสเต็ป: {action}")
+            return True
+
+        return self._on_tk(perform)
+
+    def select_profile(self, name):
+        def select():
+            self._app.sequence_profile_var.set(str(name))
+            self._app.apply_sequence_profile()
+
+        return self._on_tk(select)
+
+    def profile_action(self, action):
+        callback = {
+            "save": self._app.save_sequence_profile,
+            "delete": self._app.delete_sequence_profile,
+        }.get(action)
+        if callback is None:
+            raise ValueError(f"ไม่รู้จักการกระทำของโปรไฟล์: {action}")
+        return self._on_tk(callback)
+
+    def show_section(self, section):
+        def show():
+            dialogs = {
+                "paths": 0,
+                "options": 1,
+                "ocr": 2,
+                "verify": 3,
+            }
+            if section == "codes":
+                return self._app.show_codes_window()
+            if section == "shortcuts":
+                return self._app.open_shortcuts_window()
+            if section not in dialogs:
+                raise ValueError(f"ไม่รู้จักเมนู: {section}")
+            self._app.section_dialogs[dialogs[section]].show()
+
+        return self._on_tk(show)
+
+    def check_updates(self):
+        return self._on_tk(self._app.check_for_updates)
+
+    def move_window(self, x, y):
+        if self._window is None:
+            return False
+        self._window.move(int(x), int(y))
+        return True
+
+    def minimize_window(self):
+        if self._window is None:
+            return False
+        self._window.minimize()
+        return True
+
+    def toggle_fullscreen(self):
+        if self._window is None:
+            return False
+        self._window.toggle_fullscreen()
+        return True
+
+    def copy_value(self, value):
+        def copy():
+            self._app.copy_text_to_clipboard(str(value))
+            self._app.log(f"คัดลอกแล้ว: {value}")
+
+        return self._on_tk(copy)
+
+    def close_window(self):
+        if self._window is None:
+            return False
+        self._window.destroy()
+        return True
+
+
+def run_web_ui():
+    backend_ready = threading.Event()
+    backend_state = {}
+
+    def run_tk_backend():
+        try:
+            root = TkinterDnD.Tk() if DND_AVAILABLE else tk.Tk()
+            app = AutoReceiveApp(root)
+            backend_state["root"] = root
+            backend_state["app"] = app
+            root.withdraw()
+            root.after(0, backend_ready.set)
+            root.mainloop()
+        except Exception as error:
+            backend_state["error"] = error
+            backend_ready.set()
+
+    backend_thread = threading.Thread(target=run_tk_backend, name="KexAuto-Tk-backend", daemon=True)
+    backend_thread.start()
+    if not backend_ready.wait(30):
+        raise TimeoutError("เริ่มระบบเบื้องหลังไม่สำเร็จภายในเวลาที่กำหนด")
+    if "error" in backend_state:
+        raise RuntimeError("เริ่มระบบเบื้องหลังไม่สำเร็จ") from backend_state["error"]
+
+    root = backend_state["root"]
+    bridge = WebUiBridge(root, backend_state["app"])
+    html_path = os.path.join(RESOURCE_DIR, "ui_app.html")
+    window = webview.create_window(
+        "KexAuto",
+        html_path,
+        js_api=bridge,
+        width=1200,
+        height=800,
+        min_size=(1200, 800),
+        resizable=False,
+        frameless=True,
+        easy_drag=False,
+        text_select=True,
+    )
+    bridge._window = window
+    def handle_pdf_drop(event):
+        dropped_files = event.get("dataTransfer", {}).get("files", [])
+        pdf_path = next(
+            (
+                item.get("pywebviewFullPath")
+                for item in dropped_files
+                if str(item.get("name", "")).lower().endswith(".pdf")
+                and item.get("pywebviewFullPath")
+            ),
+            None,
+        )
+        if pdf_path:
+            try:
+                bridge.set_pdf_path(pdf_path)
+            except (OSError, ValueError, TimeoutError) as error:
+                bridge._app.log(f"❌ เปิดไฟล์ที่ลากมาวางไม่สำเร็จ: {error}")
+        elif dropped_files:
+            bridge._app.log("❌ กรุณาลากไฟล์ PDF ที่รองรับมาวาง")
+
+    def register_drop_handler():
+        window.dom.get_element("#file-drop").events.drop += handle_pdf_drop
+
+    window.events.loaded += register_drop_handler
+    window.events.closed += lambda: root.after(0, root.destroy)
+    tk_fallback = False
+    try:
+        webview.start(gui="edgechromium", debug=not getattr(sys, "frozen", False))
+    except Exception as error:
+        tk_fallback = True
+        bridge._on_tk(
+            lambda: (
+                root.deiconify(),
+                messagebox.showwarning(
+                    "เปิดหน้าตา WebView2 ไม่สำเร็จ",
+                    f"โปรแกรมจะเปิดหน้าตาแบบสำรองแทน\n\n{error}",
+                    parent=root,
+                ),
+            )
+        )
+        backend_thread.join()
+    finally:
+        if not tk_fallback and backend_thread.is_alive():
+            try:
+                root.after(0, root.destroy)
+            except tk.TclError:
+                pass
+            backend_thread.join(timeout=5)
+
 
 if __name__ == "__main__":
     try:
-        import ctypes
-        ctypes.windll.shcore.SetProcessDpiAwareness(1)  # แก้พิกัดจอเพี้ยนจาก Windows DPI Scaling
-    except Exception:
-        pass  # ไม่ใช่ Windows หรือเวอร์ชันเก่า ข้ามไปได้ ไม่กระทบการทำงาน
-    root = TkinterDnD.Tk() if DND_AVAILABLE else tk.Tk()
-    app = AutoReceiveApp(root)
-    root.mainloop()
+        ctypes.windll.shcore.SetProcessDpiAwareness(1)
+    except (AttributeError, OSError):
+        pass
+    run_web_ui()

@@ -1,9 +1,9 @@
 pdf2image
-pyzbar
+zxing-cpp
 pillow
 pyautogui
-pygetwindow
 pyperclip
 pytesseract
 tkinterdnd2
 pyinstaller
+pywebview
