@@ -69,7 +69,7 @@ except ImportError:
 pyautogui.FAILSAFE = True   # เลื่อนเมาส์ไปมุมซ้ายบน (0,0) เพื่อหยุดฉุกเฉิน
 pyautogui.PAUSE = 0.03
 
-APP_VERSION = "1.0.2"
+APP_VERSION = "1.0.3"
 GITHUB_REPOSITORY = "dexnkitxyz/kexautokit"
 GITHUB_RELEASES_API = f"https://api.github.com/repos/{GITHUB_REPOSITORY}/releases/latest"
 
@@ -3128,24 +3128,36 @@ class WebUiBridge:
 
     def select_step(self, index):
         def select():
-            index = int(index)
-            if index < 0 or index >= len(self._app.sequence):
+            step_index = int(index)
+            if step_index < 0 or step_index >= len(self._app.sequence):
                 raise ValueError("ไม่พบสเต็ปที่เลือก")
-            self._app.seq_tree.selection_set(str(index))
-            self._app.seq_tree.focus(str(index))
+            self._app.seq_tree.selection_set(str(step_index))
+            self._app.seq_tree.focus(str(step_index))
             return True
 
         return self._on_tk(select)
 
-    def sequence_action(self, action, step_type="", value="", index=-1):
+    def sequence_action(self, action, step_type="", value="", index=None, target_index=None):
         def perform():
             app = self._app
-            if index >= 0:
-                if index >= len(app.sequence):
+            step_index = -1 if index is None else int(index)
+            if step_index >= 0:
+                if step_index >= len(app.sequence):
                     raise ValueError("ไม่พบสเต็ปที่เลือก")
-                app.seq_tree.selection_set(str(index))
-                app.seq_tree.focus(str(index))
-            if action == "add":
+                app.seq_tree.selection_set(str(step_index))
+                app.seq_tree.focus(str(step_index))
+            if action == "move":
+                if step_index < 0 or target_index is None:
+                    raise ValueError("ไม่พบตำแหน่งสเต็ปที่ต้องการย้าย")
+                destination = int(target_index)
+                if destination < 0 or destination >= len(app.sequence):
+                    raise ValueError("ไม่พบสเต็ปปลายทาง")
+                step = app.sequence.pop(step_index)
+                app.sequence.insert(destination, step)
+                app.refresh_seq_listbox()
+                app.seq_tree.selection_set(str(destination))
+                app.seq_tree.focus(str(destination))
+            elif action == "add":
                 app.new_step_type.set(step_type)
                 app.new_step_value.set(value)
                 if step_type == "CLICK":

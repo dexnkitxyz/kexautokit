@@ -27,6 +27,7 @@
 เมื่อครบจำนวนรอบที่ตั้งให้หยุดพัก โปรแกรมจะแจ้งเตือนด้วยเสียง
 หน้าหลักใช้ UI แบบ Compact ผ่าน WebView2 โดยแยกส่วนเลือก PDF, แถบควบคุม,
 การตั้งค่ารอบนี้, ลำดับสเต็ป และ log เป็นการ์ด Log ทั้งสองแสดงข้างกัน
+และปรับความสูงพร้อมกันได้ด้วยการลากแถบด้านล่าง รองรับเมนู OCR และการจัดลำดับสเต็ปด้วยการลาก
 ใช้ธีมมืดโทนน้ำเงินเป็นค่าเริ่มต้น โดยไม่มีปุ่มสลับธีม
 ต้องมี Microsoft Edge WebView2 Runtime บน Windows (Windows รุ่นใหม่ส่วนใหญ่มีอยู่แล้ว)
 
@@ -69,8 +70,8 @@ python -m venv .venv
 โปรเจกต์มี GitHub Actions สำหรับสร้าง Release เมื่อ push tag รูปแบบ `vMAJOR.MINOR.PATCH`:
 
 ```powershell
-git tag v1.0.2
-git push origin v1.0.2
+git tag v1.0.3
+git push origin v1.0.3
 ```
 
 Workflow จะ build และแนบ `kexauto.exe` ใน GitHub Release ให้อัตโนมัติ

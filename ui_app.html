@@ -152,6 +152,8 @@
     .checkline { display: flex; gap: 8px; align-items: center; padding: 3px 2px 0; color: #56657b; font-size: 11px; }
     .check { width: 14px; height: 14px; accent-color: var(--blue); }
     .sequence-card { overflow: hidden; }
+    .sequence-card[hidden] { display: none; }
+    .section-head-actions { display: flex; align-items: center; gap: 8px; }
     .sequence-toolbar {
       display: flex; align-items: center; gap: 5px; padding: 5px 9px;
       border-bottom: 1px solid var(--line); background: #fbfcfe;
@@ -159,6 +161,9 @@
     .sequence-toolbar .spacer { flex: 1; }
     .select { width: 155px; height: 32px; border: 1px solid var(--line); border-radius: 7px; padding: 0 8px; color: #44536b; background: white; }
     .step-value { width: 90px; height: 32px; }
+    .step-grip { cursor: grab; user-select: none; }
+    .step-grip:active { cursor: grabbing; }
+    tr.drag-over td { box-shadow: inset 0 2px var(--blue); }
     table { width: 100%; border-collapse: collapse; }
     th { padding: 5px 9px; background: #f7f9fc; color: #77849a; text-align: left; font-size: 10px; font-weight: 700; }
     td { padding: 4px 9px; border-top: 1px solid #eff2f6; font-size: 11px; }
@@ -167,15 +172,29 @@
     .step-kind { font-weight: 650; }
     .step-detail { color: #718096; }
     .step-grip { color: #aeb8c5; font-size: 15px; padding-right: 6px; }
-    .lower-grid { display: grid; grid-template-columns: 1.25fr 1fr; gap: 8px; margin-top: 6px; }
-    .log-card { overflow: hidden; }
+    .lower-grid {
+      --log-body-height: 64px;
+      display: grid; grid-template-columns: 1.25fr 1fr; gap: 8px; margin-top: 6px;
+    }
+    .log-card { display: flex; flex-direction: column; overflow: hidden; }
     .log-head { display: flex; align-items: center; justify-content: space-between; padding: 7px 10px; border-bottom: 1px solid var(--line); }
     .log-title { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; }
     .live-dot { width: 7px; height: 7px; background: #24a875; border-radius: 50%; }
     .log-body {
-      height: 72px; overflow: hidden; padding: 5px 9px; background: #fbfcfe;
+      height: var(--log-body-height); flex: 0 0 var(--log-body-height);
+      overflow: auto; padding: 5px 9px; background: #fbfcfe;
       color: #56657b; font: 11px/1.9 Consolas, "Cascadia Code", monospace;
     }
+    .log-resize-handle {
+      display: flex; align-items: center; justify-content: center; flex: 0 0 12px;
+      width: 100%; padding: 0; border: 0; border-top: 1px solid var(--line);
+      background: transparent; cursor: ns-resize; touch-action: none;
+    }
+    .log-resize-handle::after {
+      width: 34px; height: 3px; border-radius: 3px; background: #536780; content: "";
+    }
+    .log-resize-handle:hover { background: var(--blue-pale); }
+    .log-resize-handle:hover::after { background: var(--blue); }
     .log-line { white-space: nowrap; }
     .log-time { color: #a1aaba; margin-right: 8px; }
     .log-ok { color: var(--green); }
@@ -189,7 +208,8 @@
     body[data-design="dark"] .sidebar { display: none; }
     body[data-design="dark"] main { width: min(1380px, 100%); margin: 0 auto; padding: 18px 28px 26px; }
     body[data-design="dark"] .compact-nav {
-      display: flex; align-items: center; gap: 20px; min-height: 28px; padding: 0 20px;
+      display: flex; align-items: center; flex-wrap: wrap; gap: 4px 20px;
+      min-height: 36px; margin-bottom: 10px; padding: 4px 20px;
       background: #131e2d; border-bottom: 1px solid var(--line); color: #aab8ca; font-size: 11px; font-weight: 650;
     }
     body[data-design="dark"] .compact-nav .compact-brand { color: var(--blue); font-size: 14px; font-weight: 800; margin-right: 8px; }
@@ -200,12 +220,15 @@
     }
     body[data-design="dark"] .compact-nav button:hover { background: var(--blue-pale); color: var(--blue); }
     body[data-design="dark"] .compact-nav button.compact-current { color: var(--blue); }
-    body[data-design="dark"] .topbar { border-bottom: 0; padding-bottom: 0; }
+    body[data-design="dark"] .topbar {
+      gap: 10px; flex-wrap: wrap; border-bottom: 0; padding-bottom: 0;
+    }
+    body[data-design="dark"] .top-actions { flex-wrap: wrap; justify-content: flex-end; }
     body[data-design="dark"] .topbar .subtitle { display: none; }
     body[data-design="dark"] .options { grid-template-columns: repeat(4, 1fr); }
     body[data-design="dark"] .lower-grid { grid-template-columns: 1.25fr 1fr; }
     body[data-design="dark"] .file-card { border-left: 4px solid var(--blue); }
-    body[data-design="dark"] .log-body { height: 64px; }
+    body[data-design="dark"] .log-body { height: var(--log-body-height); }
     body[data-design="dark"] {
       background: var(--page);
     }
@@ -255,7 +278,7 @@
       .top-actions .btn:not(.primary) { padding: 7px 8px; }
       .file-card { flex-wrap: wrap; }
       body[data-design="dark"] main { padding: 12px 18px; }
-      body[data-design="dark"] .compact-nav { padding: 0 14px; gap: 12px; }
+      body[data-design="dark"] .compact-nav { padding: 4px 14px; column-gap: 12px; }
       body[data-design="dark"] .lower-grid { grid-template-columns: 1fr; }
     }
   </style>
@@ -300,6 +323,7 @@
         <span class="compact-brand">KexAuto</span>
         <button class="compact-current" data-nav="home">หน้าหลัก</button>
         <button data-nav="verify">ตรวจสอบรายการ</button>
+        <button data-nav="ocr">OCR</button>
         <button data-nav="settings">ตั้งค่า</button>
         <button data-nav="paths">ไฟล์ / พาธ</button>
         <button data-nav="codes">บาร์โค้ด</button>
@@ -360,9 +384,13 @@
       </section>
 
       <div class="section-head">
-        <h2>ลำดับการทำงาน</h2><span class="section-note">ดับเบิลคลิกแถวเพื่อแก้ไข · ลากเพื่อเรียงลำดับ</span>
+        <h2>ลำดับการทำงาน</h2>
+        <div class="section-head-actions">
+          <span class="section-note">ดับเบิลคลิกแถวเพื่อแก้ไข · ลากเพื่อเรียงลำดับ</span>
+          <button class="btn small" id="toggle-sequence" type="button" aria-expanded="true" aria-controls="sequence-card">พับ</button>
+        </div>
       </div>
-      <section class="card sequence-card">
+      <section class="card sequence-card" id="sequence-card">
         <div class="sequence-toolbar">
           <select class="select" id="sequence-profile"></select>
           <button class="btn small" id="save-profile">บันทึกเป็นโปรไฟล์</button>
@@ -386,11 +414,13 @@
           <div class="log-head"><div class="log-title"><span class="live-dot"></span>Log การทำงาน</div><button class="btn small" id="clear-main-log">ล้าง</button></div>
           <div class="log-body" id="main-log"></div>
           <div class="statusbar"><span>เสร็จแล้ว <strong id="completed-count">0 / 0</strong></span><span class="right" id="main-status">พร้อมทำงาน</span></div>
+          <div class="log-resize-handle" role="separator" aria-label="ปรับความสูงของ Log" aria-orientation="horizontal" aria-valuemin="64" aria-valuemax="320" aria-valuenow="64" tabindex="0"></div>
         </div>
         <div class="card log-card">
           <div class="log-head"><div class="log-title"><span style="color:var(--red)">●</span>Log ผิดเงื่อนไข</div><button class="btn small" id="clear-error-log">ล้าง</button></div>
           <div class="log-body" id="error-log"></div>
           <div class="statusbar"><span>พบรายการ <strong id="error-count" style="color:var(--red)">0</strong></span><span class="right">คลิกตัวเลขเพื่อคัดลอก</span></div>
+          <div class="log-resize-handle" role="separator" aria-label="ปรับความสูงของ Log ผิดเงื่อนไข" aria-orientation="horizontal" aria-valuemin="64" aria-valuemax="320" aria-valuenow="64" tabindex="0"></div>
         </div>
       </section>
     </main>
@@ -424,6 +454,8 @@
     let lastMainLog = "";
     let lastErrorLog = "";
     let selectedStep = -1;
+    let draggedStep = null;
+    let sequenceReordering = false;
     let initialized = false;
     let refreshing = false;
 
@@ -455,19 +487,53 @@
     }
 
     function renderSequence(state) {
+      if (draggedStep !== null || sequenceReordering) return;
       const table = byId("sequence-steps");
       if (selectedStep !== state.selectedStep) selectedStep = state.selectedStep;
       table.replaceChildren();
       state.sequence.forEach((step, index) => {
         const row = document.createElement("tr");
+        row.draggable = true;
         if (index === selectedStep) row.classList.add("selected");
-        row.innerHTML = `<td class="step-no">${String(index + 1).padStart(2, "0")}</td><td class="step-kind"></td><td class="step-detail"></td><td class="step-grip">⠿</td>`;
+        row.innerHTML = `<td class="step-no">${String(index + 1).padStart(2, "0")}</td><td class="step-kind"></td><td class="step-detail"></td><td class="step-grip" title="ลากแถวเพื่อเปลี่ยนลำดับ">⠿</td>`;
         row.children[1].textContent = step.action;
         row.children[2].textContent = step.detail;
         row.addEventListener("click", async () => {
+          if (sequenceReordering) return;
           selectedStep = index;
           await invoke("select_step", index);
           renderSequence({ ...state, selectedStep: index });
+        });
+        row.addEventListener("dragstart", (event) => {
+          draggedStep = index;
+          event.dataTransfer.effectAllowed = "move";
+          event.dataTransfer.setData("text/plain", String(index));
+        });
+        row.addEventListener("dragend", () => {
+          if (!sequenceReordering) draggedStep = null;
+          table.querySelectorAll("tr.drag-over").forEach((draggedRow) => draggedRow.classList.remove("drag-over"));
+          if (!sequenceReordering) refreshState();
+        });
+        row.addEventListener("dragover", (event) => {
+          if (draggedStep === null) return;
+          event.preventDefault();
+          row.classList.add("drag-over");
+        });
+        row.addEventListener("dragleave", () => row.classList.remove("drag-over"));
+        row.addEventListener("drop", async (event) => {
+          event.preventDefault();
+          row.classList.remove("drag-over");
+          if (draggedStep === null || draggedStep === index) return;
+          const source = draggedStep;
+          sequenceReordering = true;
+          selectedStep = index;
+          try {
+            await invoke("sequence_action", "move", "", "", source, index);
+          } finally {
+            draggedStep = null;
+            sequenceReordering = false;
+            await refreshState();
+          }
         });
         table.append(row);
       });
@@ -565,6 +631,57 @@
     byId("check-updates").addEventListener("click", () => invoke("check_updates"));
     byId("clear-main-log").addEventListener("click", () => invoke("clear_log", false));
     byId("clear-error-log").addEventListener("click", () => invoke("clear_log", true));
+    byId("toggle-sequence").addEventListener("click", (event) => {
+      const button = event.currentTarget;
+      const card = byId("sequence-card");
+      const collapsed = !card.hidden;
+      card.hidden = collapsed;
+      button.setAttribute("aria-expanded", String(!collapsed));
+      button.textContent = collapsed ? "ขยาย" : "พับ";
+    });
+    const logResizeHandles = document.querySelectorAll(".log-resize-handle");
+    const setLogHeight = (height, maxHeight = 320) => {
+      const value = Math.max(64, Math.min(maxHeight, Math.round(height)));
+      byId("main-log").closest(".lower-grid").style.setProperty("--log-body-height", `${value}px`);
+      logResizeHandles.forEach((handle) => {
+        handle.setAttribute("aria-valuemax", String(maxHeight));
+        handle.setAttribute("aria-valuenow", String(value));
+      });
+    };
+    logResizeHandles.forEach((handle) => {
+      let startY = 0;
+      let startHeight = 64;
+      let maxHeight = 320;
+      handle.addEventListener("pointerdown", (event) => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        startY = event.clientY;
+        startHeight = Number.parseInt(getComputedStyle(byId("main-log")).height, 10);
+        maxHeight = Math.max(
+          64,
+          Math.min(320, startHeight + window.innerHeight - handle.getBoundingClientRect().bottom - 24),
+        );
+        handle.setPointerCapture(event.pointerId);
+      });
+      handle.addEventListener("pointermove", (event) => {
+        if (!handle.hasPointerCapture(event.pointerId)) return;
+        setLogHeight(startHeight + event.clientY - startY, maxHeight);
+      });
+      handle.addEventListener("keydown", (event) => {
+        const currentHeight = Number.parseInt(getComputedStyle(byId("main-log")).height, 10);
+        maxHeight = Math.max(
+          64,
+          Math.min(320, currentHeight + window.innerHeight - handle.getBoundingClientRect().bottom - 24),
+        );
+        if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+          event.preventDefault();
+          setLogHeight(currentHeight + (event.key === "ArrowUp" ? 16 : -16), maxHeight);
+        } else if (event.key === "Home" || event.key === "End") {
+          event.preventDefault();
+          setLogHeight(event.key === "Home" ? 64 : maxHeight, maxHeight);
+        }
+      });
+    });
     byId("add-step").addEventListener("click", () => invoke("sequence_action", "add", byId("step-type").value, byId("step-value").value));
     byId("step-up").addEventListener("click", () => invoke("sequence_action", "up", "", "", selectedStep));
     byId("step-down").addEventListener("click", () => invoke("sequence_action", "down", "", "", selectedStep));
@@ -589,6 +706,7 @@
       const target = button.dataset.nav;
       if (target === "home") window.scrollTo(0, 0);
       else if (target === "verify") invoke("show_section", "verify");
+      else if (target === "ocr") invoke("show_section", "ocr");
       else if (target === "settings") invoke("show_section", "options");
       else if (target === "paths") invoke("show_section", "paths");
       else if (target === "codes") invoke("show_section", "codes");
