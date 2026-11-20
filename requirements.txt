@@ -6,4 +6,3 @@ pyperclip
 pytesseract
 tkinterdnd2
 pyinstaller
-pywebview
